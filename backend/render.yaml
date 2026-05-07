@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: pod-manufacturing-api
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -e "."
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
