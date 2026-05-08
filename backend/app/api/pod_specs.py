@@ -113,6 +113,7 @@ class BomOut(BaseModel):
     lines: list[BomLineOut]
     total_cost: float | None = None  # sum of all line_costs where price available
     currency: str | None = None      # currency of the total (None if mixed)
+    warnings: list[str] = []         # data quality and pricing warnings
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -395,8 +396,6 @@ def get_pod_spec_bom(spec_id: int, db: Db):
         raise HTTPException(status_code=404, detail="Pod spec not found.")
 
     areas, all_elements = _decompose_geometry(spec.geometry)
-
-    # Pre-build opening list for per-face lookup
     opening_elements = [el for el in all_elements if el.type == "Opening"]
 
     assignments = {
@@ -405,7 +404,25 @@ def get_pod_spec_bom(spec_id: int, db: Db):
         "Roof":         spec.roof_build_up_id,
     }
 
+    # Pre-fetch materials used for framing zone sub-line pricing so we don't
+    # do repeated per-layer DB round-trips for these fixed references.
+    _framing_price_refs = {
+        "GENERIC-C24-TIMBER",
+        "GENERIC-MW-FRAMING-140",
+        "GENERIC-PIR-FRAMING-140",
+    }
+    framing_ref_mats: dict[str, MaterialLibrary] = {
+        m.supplier_ref: m
+        for m in db.query(MaterialLibrary).filter(
+            MaterialLibrary.supplier_ref.in_(_framing_price_refs)
+        ).all()
+    }
+
     lines: list[BomLineOut] = []
+    bom_warnings: list[str] = []
+    # Track which build-ups have already fired the Intello warning (once per BU).
+    _intello_warned: set[int] = set()
+
     for element_type, bu_id in assignments.items():
         if bu_id is None:
             continue
@@ -418,7 +435,6 @@ def get_pod_spec_bom(spec_id: int, db: Db):
             el.area_gross_m2 for el in all_elements if el.type == element_type
         ), 3)
 
-        # Build WallGeometry list for ExternalWall linear calculations
         wall_geoms: list[WallGeometry] = []
         if element_type == "ExternalWall":
             for el in all_elements:
@@ -435,12 +451,25 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                     net_area_m2=el.area_net_m2,
                 ))
 
-        # Process one layer at a time so position_order and supplier_ref stay attached
         for layer in bu.layers:
             mat   = db.get(MaterialLibrary, layer.material_id)
             props = layer.properties or {}
             role  = props.get("role", "")
             ff    = float(props.get("framing_fraction", 0.15))
+
+            # Warn once per build-up if a premium airtight membrane is used
+            # in what looks like a standard or light specification.
+            if (
+                mat.supplier_ref == "PROCLIMA-INTELLO-PLUS"
+                and bu.id not in _intello_warned
+                and "enhanced" not in bu.name.lower()
+                and "premium" not in bu.name.lower()
+            ):
+                _intello_warned.add(bu.id)
+                bom_warnings.append(
+                    f"Build-up '{bu.name}' uses Intello Plus (premium airtight membrane) — "
+                    f"standard/light specifications should use a standard VCL."
+                )
 
             mto_input = MtoInputLayer(
                 name=mat.name,
@@ -458,33 +487,94 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                 total_gross_m2=total_gross,
             )
 
-            # price lookup deferred per mto line so unit-specific prices are used
-            # EPS / variable-thickness insulation: price scales by layer_thickness / 100mm basis
+            # Thickness-based price scaling:
+            #   EPS  — prices stored per 100mm basis
+            #   PIR  — prices stored per 50mm basis
+            ref_upper = (mat.supplier_ref or "").upper()
             price_basis_mm: float | None = None
-            if mat.supplier_ref and "EPS" in (mat.supplier_ref or "").upper():
-                price_basis_mm = 100.0  # prices stored per 100mm thickness
+            if "EPS" in ref_upper:
+                price_basis_mm = 100.0
+            elif "PIR" in ref_upper:
+                price_basis_mm = 50.0
 
             for mto in mto_lines:
+                # Route framing-zone sub-lines to the correct pricing material:
+                #   framing_zone_timber    → GENERIC-C24-TIMBER (lm)
+                #   framing_zone_insulation → infill material ref from layer props (m2)
+                # Without this routing both lines would fall back to the composite
+                # zone price (e.g. EUR 22/m²) applied per lm — wrong by ~6×.
+                price_mat = mat
+                line_supplier_ref = mat.supplier_ref or ""
+                apply_thickness_scaling = True
+
+                if mto.role == "framing_zone_timber":
+                    c24 = framing_ref_mats.get("GENERIC-C24-TIMBER")
+                    if c24:
+                        price_mat = c24
+                        line_supplier_ref = c24.supplier_ref or ""
+                        apply_thickness_scaling = False
+                    else:
+                        bom_warnings.append(
+                            "GENERIC-C24-TIMBER not found in material library — "
+                            "C24 framing line is priced from the composite zone rate (inflated)"
+                        )
+
+                elif mto.role == "framing_zone_insulation":
+                    infill_ref = props.get("infill_material_ref", "")
+                    if infill_ref:
+                        infill_mat = framing_ref_mats.get(infill_ref)
+                        if infill_mat is None:
+                            # Not in pre-fetch set — try a direct lookup
+                            infill_mat = db.query(MaterialLibrary).filter(
+                                MaterialLibrary.supplier_ref == infill_ref
+                            ).first()
+                        if infill_mat:
+                            price_mat = infill_mat
+                            line_supplier_ref = infill_mat.supplier_ref or ""
+                            apply_thickness_scaling = False
+                        else:
+                            bom_warnings.append(
+                                f"Infill material '{infill_ref}' not in material library — "
+                                "insulation infill line priced from composite zone rate (may be inflated)"
+                            )
+                    else:
+                        # Framing zone has no infill_material_ref stored in layer properties.
+                        # Warn so the build-up definition can be corrected.
+                        bom_warnings.append(
+                            f"Build-up '{bu.name}' framing zone layer has no "
+                            "'infill_material_ref' in properties — insulation infill "
+                            "priced from composite zone rate. Add infill_material_ref to fix."
+                        )
+
                 price_per_unit: float | None = None
                 currency: str | None = None
                 line_cost: float | None = None
 
-                matched_price = _price_for_unit(mat.id, mto.unit, db)
+                matched_price = _price_for_unit(price_mat.id, mto.unit, db)
                 if matched_price is not None:
                     base_price = matched_price.price_per_unit
-                    # Scale price by thickness for variable-thickness materials
-                    if price_basis_mm and layer.thickness_mm and layer.thickness_mm != price_basis_mm:
+                    if (
+                        apply_thickness_scaling
+                        and price_basis_mm
+                        and layer.thickness_mm
+                        and layer.thickness_mm != price_basis_mm
+                    ):
                         base_price = round(base_price * (layer.thickness_mm / price_basis_mm), 4)
                     price_per_unit = base_price
                     currency = matched_price.currency
                     line_cost = round(mto.order_quantity * price_per_unit, 2)
+                else:
+                    bom_warnings.append(
+                        f"Missing price: {mto.material_name} "
+                        f"({line_supplier_ref or 'no ref'}, unit: {mto.unit}) — line cost excluded"
+                    )
 
                 lines.append(BomLineOut(
                     element_type=element_type,
                     build_up_name=bu.name,
                     position_order=layer.position_order,
                     material_name=mto.material_name,
-                    supplier_ref=mat.supplier_ref or "",
+                    supplier_ref=line_supplier_ref,
                     role=mto.role,
                     method=mto.method,
                     thickness_mm=layer.thickness_mm,
@@ -499,13 +589,11 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                     line_cost=line_cost,
                 ))
 
-    # Count wall openings by type
+    # ── Opening counts (for BomOut summary field) ─────────────────────────────
     opening_counts: dict[str, int] = {}
     for o in spec.geometry.get("openings", []):
         otype = o.get("type", "other")
         opening_counts[otype] = opening_counts.get(otype, 0) + 1
-
-    # Count selected roof openings (skylights)
     roof_opening_count = sum(
         1 for ro in spec.geometry.get("roof_openings", [])
         if ro.get("selected", False)
@@ -513,44 +601,108 @@ def get_pod_spec_bom(spec_id: int, db: Db):
     if roof_opening_count:
         opening_counts["rooflight"] = roof_opening_count
 
-    # Inject opening lines into BOM from provisional allowances
-    # Maps opening type → (provisional code, element_type, position_order for sorting)
-    OPENING_PA_MAP = [
-        ("window",    "ENV_WINDOW",    "ExternalWall", 999),
-        ("door",      "ENV_EXT_DOOR",  "ExternalWall", 1000),
-        ("rooflight", "ENV_ROOFLIGHT", "Roof",         999),
-    ]
-    for otype, pa_code, el_type, pos_order in OPENING_PA_MAP:
-        qty = opening_counts.get(otype, 0)
-        if qty == 0:
-            continue
-        pa = db.query(ProvisionalAllowance).filter(
-            ProvisionalAllowance.code == pa_code
-        ).first()
-        if pa is None:
-            continue
-        line_cost = round(pa.default_unit_rate * qty, 2)
+    # ── Per-opening BOM rows with tags, dimensions, wall/roof location ────────
+    # Each opening gets its own row: W1, W2…, D1…, RL1…
+    # Costs are provisional allowances from ProvisionalAllowance table.
+    OPENING_CFG: dict[str, tuple[str, str, str, int]] = {
+        # type: (tag_prefix, pa_code, element_type, position_order)
+        "window":      ("W",  "ENV_WINDOW",    "ExternalWall", 999),
+        "door":        ("D",  "ENV_EXT_DOOR",  "ExternalWall", 1000),
+        "french_door": ("D",  "ENV_EXT_DOOR",  "ExternalWall", 1000),
+        "vent":        ("V",  "ENV_WINDOW",    "ExternalWall", 999),
+    }
+    type_counters: dict[str, int] = {}
+
+    # Cache PA lookups to avoid redundant queries
+    pa_cache: dict[str, ProvisionalAllowance | None] = {}
+
+    def _get_pa(code: str) -> ProvisionalAllowance | None:
+        if code not in pa_cache:
+            pa_cache[code] = db.query(ProvisionalAllowance).filter(
+                ProvisionalAllowance.code == code
+            ).first()
+        return pa_cache[code]
+
+    for o in spec.geometry.get("openings", []):
+        otype = o.get("type", "window")
+        prefix, pa_code, el_type, pos_order = OPENING_CFG.get(
+            otype, ("X", "ENV_WINDOW", "ExternalWall", 999)
+        )
+        type_counters[prefix] = type_counters.get(prefix, 0) + 1
+        tag = f"{prefix}{type_counters[prefix]}"
+
+        wall_face = o.get("wall", "?")
+        w_mm = round(float(o.get("width_m", 0)) * 1000)
+        h_mm = round(float(o.get("height_m", 0)) * 1000)
+        type_label = otype.replace("_", " ").title()
+        supplier_ref_str = f"ALLOWANCE-{otype.upper().replace('_', '-')}-GENERIC"
+
+        pa = _get_pa(pa_code)
+        unit_rate = pa.default_unit_rate if pa else 0.0
+        curr      = pa.currency if pa else "EUR"
+
+        bom_warnings.append(
+            f"{tag} ({type_label} {w_mm}×{h_mm}mm — Wall {wall_face}): "
+            "cost is provisional allowance — replace with supplier quote"
+        )
         lines.append(BomLineOut(
             element_type=el_type,
             build_up_name="Openings",
             position_order=pos_order,
-            material_name=pa.name,
-            supplier_ref="",
+            material_name=f"{tag} — {type_label} {w_mm}×{h_mm}mm — Wall {wall_face}",
+            supplier_ref=supplier_ref_str,
             role="opening",
             method="each",
             thickness_mm=0.0,
-            raw_quantity=float(qty),
+            raw_quantity=1.0,
             waste_factor=1.0,
-            order_quantity=float(qty),
-            area_m2=float(qty),
+            order_quantity=1.0,
+            area_m2=float(o.get("width_m", 0)) * float(o.get("height_m", 0)),
             unit="each",
-            notes="Provisional allowance. Replace with supplier quote.",
-            price_per_unit=pa.default_unit_rate,
-            currency=pa.currency,
-            line_cost=line_cost,
+            notes="Provisional allowance — replace with supplier quote.",
+            price_per_unit=unit_rate,
+            currency=curr,
+            line_cost=round(unit_rate, 2),
         ))
 
-    # Grand total — only sum lines where price is present
+    # Rooflight rows
+    rl_counter = 0
+    pa_rl   = _get_pa("ENV_ROOFLIGHT")
+    rl_rate = pa_rl.default_unit_rate if pa_rl else 0.0
+    rl_curr = pa_rl.currency if pa_rl else "EUR"
+    for ro in spec.geometry.get("roof_openings", []):
+        if not ro.get("selected", False):
+            continue
+        rl_counter += 1
+        tag  = f"RL{rl_counter}"
+        w_mm = round(float(ro.get("width_m", 0.6)) * 1000)
+        h_mm = round(float(ro.get("height_m", 0.8)) * 1000)
+
+        bom_warnings.append(
+            f"{tag} (Rooflight {w_mm}×{h_mm}mm — Roof/Ceiling): "
+            "cost is provisional allowance — verify rooflight appears in roof/ceiling drawing and opening schedule"
+        )
+        lines.append(BomLineOut(
+            element_type="Roof",
+            build_up_name="Openings",
+            position_order=999,
+            material_name=f"{tag} — Rooflight {w_mm}×{h_mm}mm — Roof/Ceiling",
+            supplier_ref="ALLOWANCE-ROOFLIGHT-GENERIC",
+            role="opening",
+            method="each",
+            thickness_mm=0.0,
+            raw_quantity=1.0,
+            waste_factor=1.0,
+            order_quantity=1.0,
+            area_m2=float(ro.get("width_m", 0.6)) * float(ro.get("height_m", 0.8)),
+            unit="each",
+            notes="Provisional allowance — verify rooflight appears in roof/ceiling drawing and opening schedule.",
+            price_per_unit=rl_rate,
+            currency=rl_curr,
+            line_cost=round(rl_rate, 2),
+        ))
+
+    # ── Grand total ───────────────────────────────────────────────────────────
     priced = [l for l in lines if l.line_cost is not None]
     total_cost: float | None = None
     total_currency: str | None = None
@@ -567,6 +719,7 @@ def get_pod_spec_bom(spec_id: int, db: Db):
         lines=lines,
         total_cost=total_cost,
         currency=total_currency,
+        warnings=bom_warnings,
     )
 
 

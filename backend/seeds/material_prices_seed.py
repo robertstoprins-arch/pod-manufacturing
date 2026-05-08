@@ -19,39 +19,54 @@ from app.db import SessionLocal
 from app.models import MaterialLibrary, MaterialPrice
 
 # supplier_ref → (price_per_unit, unit, currency, notes)
+#
+# Unit conventions:
+#   "m2"  — area materials (boards, membranes, insulation, cladding)
+#   "lm"  — linear materials (battens, studs, counter-battens)
+#           Must match mto_resolver output units to avoid unit-mismatch fallback.
+#   "m3"  — volume materials (concrete)
+#
+# Variable-thickness materials (EPS, PIR outboard) are priced at a stated
+# basis thickness; the BOM engine scales proportionally.
+#   EPS  basis = 100mm (price stored for 100mm; 250mm → price × 2.5)
+#   PIR  basis =  50mm (price stored for  50mm; 100mm → price × 2.0)
 PRICES: dict[str, tuple] = {
     # Internal finish
-    "SGG-GYPROC-12.5":            (4.50,  "m2",  "EUR", "Standard 12.5mm plasterboard, trade supply"),
-    # Service void — batten framing labour+material combined
-    "GENERIC-SVC-VOID-50":        (8.00,  "m2",  "EUR", "25×50 batten frame incl fixing, indicative"),
-    # VCL membrane
-    "PROCLIMA-INTELLO-PLUS":      (6.50,  "m2",  "EUR", "Intello Plus, trade supply"),
+    "SGG-GYPROC-12.5":              (4.50,  "m2",  "EUR", "Standard 12.5mm plasterboard, trade supply"),
+    # Service void — 25×50 battens at 600cc, priced per lm of batten
+    # Previously stored as m2; corrected to lm to match mto_resolver output.
+    "GENERIC-SVC-VOID-50":          (0.90,  "lm",  "EUR", "25×50 treated service void batten per lm, indicative"),
+    # VCL membranes
+    "GENERIC-VCL-STANDARD":         (1.50,  "m2",  "EUR", "Standard 0.2mm polythene VCL, trade supply"),
+    "PROCLIMA-INTELLO-PLUS":        (6.50,  "m2",  "EUR", "Intello Plus intelligent VCL, trade supply (premium/enhanced only)"),
     # Sheathing
-    "GENERIC-OSB3-11":            (7.50,  "m2",  "EUR", "OSB/3 11mm, trade supply"),
-    # Framing zones (stud + insulation combined as m2 panel)
-    "GENERIC-C24-PIR-140":        (38.00, "m2",  "EUR", "C24 stud zone 140mm + PIR fill, indicative"),
-    "GENERIC-C24-MW-140":         (22.00, "m2",  "EUR", "C24 stud zone 140mm + mineral wool fill, indicative"),
-    # Outboard insulation
-    "GENERIC-PIR-OUTBOARD-50":    (18.00, "m2",  "EUR", "PIR board 50mm outboard, trade supply"),
+    "GENERIC-OSB3-11":              (7.50,  "m2",  "EUR", "OSB/3 11mm, trade supply"),
+    # Framing zones (composite panel prices — used as fallback if sub-material refs missing)
+    "GENERIC-C24-PIR-140":          (38.00, "m2",  "EUR", "C24 stud zone 140mm + PIR fill composite, indicative"),
+    "GENERIC-C24-MW-140":           (22.00, "m2",  "EUR", "C24 stud zone 140mm + mineral wool fill composite, indicative"),
+    # Outboard insulation — variable thickness; prices at stated basis thickness
+    "GENERIC-PIR-OUTBOARD-50":      (18.00, "m2",  "EUR", "PIR board outboard, trade supply — basis 50mm (BOM scales by thickness)"),
+    "GENERIC-PIR-OUTBOARD-100":     (32.00, "m2",  "EUR", "PIR board 100mm outboard, trade supply"),
     # Breather membrane
-    "DUPONT-TYVEK-HOUSEWRAP":     (3.50,  "m2",  "EUR", "Tyvek Housewrap, trade supply"),
-    # Ventilated cavity — counter-batten labour+material
-    "GENERIC-VENT-CAVITY-25":     (5.00,  "m2",  "EUR", "Ventilated cavity inc battens, indicative"),
-    # Linear batten / counter-batten
-    "GENERIC-BATTEN-25X50":       (0.80,  "m",   "EUR", "25×50 treated batten, trade supply"),
-    "GENERIC-COUNTER-BATTEN-38X50": (1.20, "m",  "EUR", "38×50 treated counter-batten, trade supply"),
+    "DUPONT-TYVEK-HOUSEWRAP":       (3.50,  "m2",  "EUR", "Tyvek Housewrap, trade supply"),
+    # Ventilated cavity — combined batten + fixing allowance per m2 of wall face
+    "GENERIC-VENT-CAVITY-25":       (5.00,  "m2",  "EUR", "Ventilated cavity inc battens, indicative"),
+    # Linear battens / counter-battens
+    "GENERIC-BATTEN-25X50":         (0.80,  "lm",  "EUR", "25×50 treated batten per lm, trade supply"),
+    "GENERIC-COUNTER-BATTEN-38X50": (1.20,  "lm",  "EUR", "38×50 treated counter-batten per lm, trade supply"),
     # Cladding
-    "GENERIC-FC-CLADDING-12":     (28.00, "m2",  "EUR", "Fibre cement cladding 12mm, trade supply"),
-    # Floor
-    "GENERIC-EPS-FLOOR-150":      (14.00, "m2",  "EUR", "EPS floor 150mm, trade supply per 100mm basis"),
-    "GENERIC-CONCRETE-SLAB-150":  (55.00, "m2",  "EUR", "In-situ concrete slab 150mm incl pour, indicative"),
+    "GENERIC-FC-CLADDING-12":       (28.00, "m2",  "EUR", "Fibre cement cladding 12mm, trade supply"),
+    # Floor insulation — EPS variable thickness; basis 100mm
+    "GENERIC-EPS-FLOOR-150":        (8.00,  "m2",  "EUR", "EPS floor insulation, trade supply — basis 100mm (BOM scales by thickness)"),
+    # Concrete slab — indicative rate; verify with local supplier
+    "GENERIC-CONCRETE-SLAB-150":    (55.00, "m2",  "EUR", "In-situ concrete slab 150mm incl pour, indicative — verify supplier rate"),
     # Roof insulation
-    "GENERIC-MW-ROOF-300":        (16.00, "m2",  "EUR", "Mineral wool roof 300mm, trade supply"),
-    # Structural framing
-    "GENERIC-C24-TIMBER":         (3.50,  "m",   "EUR", "C24 structural timber, trade supply"),
-    # Framing zone infill (sold per m2 of panel)
-    "GENERIC-PIR-FRAMING-140":    (18.00, "m2",  "EUR", "PIR infill 140mm framing zone, indicative"),
-    "GENERIC-MW-FRAMING-140":     (12.00, "m2",  "EUR", "Mineral wool infill 140mm framing zone, indicative"),
+    "GENERIC-MW-ROOF-300":          (16.00, "m2",  "EUR", "Mineral wool roof insulation, trade supply"),
+    # C24 structural timber — priced per lm for framing_zone_split sub-lines
+    "GENERIC-C24-TIMBER":           (3.50,  "lm",  "EUR", "C24 structural timber per lm, trade supply"),
+    # Framing zone infill materials — priced separately from composite zone
+    "GENERIC-PIR-FRAMING-140":      (18.00, "m2",  "EUR", "PIR infill 140mm framing zone per m2, indicative"),
+    "GENERIC-MW-FRAMING-140":       (12.00, "m2",  "EUR", "Mineral wool infill 140mm framing zone per m2, indicative"),
 }
 
 

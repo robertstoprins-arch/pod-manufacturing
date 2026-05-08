@@ -318,6 +318,40 @@ MATERIALS: list[dict] = [
             "sd_value_m": None,
         },
     },
+    # 18. Standard polythene VCL — used in standard/light build-ups
+    # Intello Plus is reserved for enhanced/premium airtightness specifications.
+    {
+        "name": "Standard Polythene VCL (0.2mm)",
+        "manufacturer": None,
+        "lambda_W_mK": 0.17,
+        "density_kg_m3": None,
+        "supplier_ref": "GENERIC-VCL-STANDARD",
+        "unit": "m2",
+        "properties": {
+            "category": "vcl",
+            "default_role": "vcl",
+            "default_thickness_mm": 0.2,
+            "include_in_u_value": False,
+            "sd_value_m": 50.0,   # standard PE: high vapour resistance
+        },
+    },
+    # 19. PIR outboard insulation — 100mm thickness
+    # Used in standard hybrid wall and enhanced wall build-ups.
+    {
+        "name": "PIR Insulation Board (Outboard, 100mm)",
+        "manufacturer": None,
+        "lambda_W_mK": 0.023,
+        "density_kg_m3": 32.0,
+        "supplier_ref": "GENERIC-PIR-OUTBOARD-100",
+        "unit": "m2",
+        "properties": {
+            "category": "insulation",
+            "default_role": "insulation",
+            "default_thickness_mm": 100.0,
+            "include_in_u_value": True,
+            "sd_value_m": 100.0,
+        },
+    },
 ]
 
 
