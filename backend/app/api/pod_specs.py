@@ -488,13 +488,15 @@ def get_pod_spec_bom(spec_id: int, db: Db):
             )
 
             # Thickness-based price scaling:
-            #   EPS  — prices stored per 100mm basis
-            #   PIR  — prices stored per 50mm basis
-            ref_upper = (mat.supplier_ref or "").upper()
+            #   EPS materials — prices stored per 100mm basis (ref encodes nominal
+            #     thickness but basis is always 100mm by convention)
+            #   GENERIC-PIR-OUTBOARD-50 only — used at variable thicknesses in some
+            #     legacy build-ups; thickness-specific refs (PIR-OUTBOARD-100) are
+            #     priced at their exact thickness and must NOT be scaled.
             price_basis_mm: float | None = None
-            if "EPS" in ref_upper:
+            if "EPS" in (mat.supplier_ref or "").upper():
                 price_basis_mm = 100.0
-            elif "PIR" in ref_upper:
+            elif mat.supplier_ref == "GENERIC-PIR-OUTBOARD-50":
                 price_basis_mm = 50.0
 
             for mto in mto_lines:
