@@ -54,3 +54,5 @@ venv/
 # Python coverage
 .coverage
 htmlcov/
+
+.vercel
