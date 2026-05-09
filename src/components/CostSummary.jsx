@@ -2,67 +2,220 @@ import { useState, useEffect } from 'react'
 import { apiFetch } from '../api/client'
 
 // ── Package group definitions ─────────────────────────────────────────────────
-// type: 'radio' = one choice at a time | 'multi' = checkboxes | 'qty' = with quantity
+// provisional_allowance: the one client-facing value shown.
+// low / high: kept internally for estimating — never shown in client-facing UI.
+// link fields: placeholder for future supplier / reference links.
 
 export const PACKAGE_GROUPS = [
   {
     id: 'roof_finish', label: 'Roof Finish', type: 'bool', phase: 'base_envelope',
     options: [
-      { code: 'roof_epdm_standard', name: 'EPDM Roof Finish', low: 700, target: 700, high: 700, notes: 'EPDM membrane, adhesive, trims and outlet allowance.' },
+      {
+        code: 'roof_epdm_standard', name: 'EPDM Roof Finish',
+        provisional_allowance: 700, low: 700, high: 700,
+        notes: 'EPDM membrane, adhesive, trims and outlet allowance.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
     id: 'heating', label: 'Heating', type: 'radio', phase: 'services_comfort',
     options: [
-      { code: 'electric_radiators_base',  name: 'Electric Radiators — Base',      low: 250,  target: 400,  high: 600,  notes: 'Slim wall-mounted electric radiators. Final electrical design by qualified installer.' },
-      { code: 'electric_radiators_smart', name: 'Smart Electric Radiators',        low: 700,  target: 1000, high: 1400, notes: 'Smart controls / WiFi radiator allowance.' },
-      { code: 'air_to_air_heat_pump',     name: 'Air-to-Air Heat Pump Upgrade',   low: 1500, target: 2200, high: 3000, notes: 'Heating and cooling upgrade. Installation by qualified installer.' },
+      {
+        code: 'electric_radiators_base', name: 'Electric Radiators — Base',
+        provisional_allowance: 450, low: 250, high: 600,
+        notes: 'Slim wall-mounted electric radiator allowance.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'electric_radiators_smart', name: 'Smart Electric Radiators',
+        provisional_allowance: 1050, low: 700, high: 1400,
+        notes: 'Smart controls / WiFi radiator allowance.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'air_to_air_heat_pump', name: 'Air-to-Air Heat Pump Upgrade',
+        provisional_allowance: 2250, low: 1500, high: 3000,
+        notes: 'Heating and cooling upgrade allowance.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
     id: 'ventilation', label: 'Ventilation', type: 'multi', phase: 'services_comfort',
     options: [
-      { code: 'trickle_vents_allowance', name: 'Trickle Vents',              low: 80,   target: 140,  high: 200,  notes: 'Background ventilation allowance via window trickle vents.' },
-      { code: 'bathroom_extract',        name: 'Bathroom Extract Fan',       low: 120,  target: 200,  high: 300,  notes: 'Required where bathroom / shower room is selected.' },
-      { code: 'kitchen_extract',         name: 'Kitchen Extract Provision',  low: 200,  target: 380,  high: 600,  notes: 'Cooker hood or wall extract provision.' },
-      { code: 'mvhr_premium',            name: 'MVHR Premium Option',        low: 1500, target: 2200, high: 3000, notes: 'Premium option only, not base specification.' },
+      {
+        code: 'trickle_vents_allowance', name: 'Trickle Vents',
+        provisional_allowance: 140, low: 80, high: 200,
+        notes: 'Background ventilation allowance via window trickle vents.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'bathroom_extract', name: 'Bathroom Extract Fan',
+        provisional_allowance: 120, low: 120, high: 300,
+        notes: 'Required where bathroom / shower room is selected.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'kitchen_extract', name: 'Kitchen Extract Provision',
+        provisional_allowance: 400, low: 200, high: 600,
+        notes: 'Cooker hood or wall extract provision.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'mvhr_premium', name: 'MVHR Premium Option',
+        provisional_allowance: 2250, low: 1500, high: 3000,
+        notes: 'Premium ventilation option only. Not included in base specification.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
     id: 'cctv_data', label: 'CCTV / Data', type: 'multi', phase: 'optional_addons',
     options: [
-      { code: 'cctv_cat6_prewire',        name: 'CAT6 Prewire',              low: 350, target: 600,  high: 800,  notes: 'CAT6 home-runs to external camera positions and data/comms location.' },
-      { code: 'basic_4_camera_ip',        name: 'Basic 4-Camera IP Package', low: 800, target: 1400, high: 2000, notes: 'Basic IP cameras, PoE/NVR allowance. Brand to be confirmed.' },
+      {
+        code: 'cctv_cat6_prewire', name: 'CAT6 Prewire',
+        provisional_allowance: 575, low: 350, high: 800,
+        notes: 'CAT6 home-runs to external camera positions and data/comms location.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'basic_4_camera_ip', name: 'Basic 4-Camera IP CCTV Package',
+        provisional_allowance: 1400, low: 800, high: 2000,
+        notes: 'Provisional sum for 4 cameras installed at client\'s discretion. Camera positions, brand, NVR/storage and final specification to be confirmed.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
     id: 'pv_ready', label: 'PV-Ready Provision', type: 'bool', phase: 'optional_addons',
     options: [
-      { code: 'pv_ready_roof', name: 'PV-Ready Roof Provision', low: 250, target: 400, high: 600, notes: 'Spare conduit, marked fixing/ballast zones. PV installation not included.' },
+      {
+        code: 'pv_ready_roof', name: 'PV-Ready Roof Provision',
+        provisional_allowance: 425, low: 250, high: 600,
+        notes: 'Spare conduit and marked fixing/ballast zones. PV installation not included.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
     id: 'finishes', label: 'Interior Finishes', type: 'radio', phase: 'interior_finish',
     options: [
-      { code: 'budget_finishes',   name: 'Budget Internal Finishes',   low: 2500, target: 3200, high: 4000, notes: 'Basic flooring, paint, skirting/trim allowance.' },
-      { code: 'standard_finishes', name: 'Standard Internal Finishes', low: 4500, target: 5800, high: 7000, notes: 'Improved flooring, decorating, trims and internal finish allowance.' },
+      {
+        code: 'budget_finishes', name: 'Budget Internal Finishes',
+        provisional_allowance: 3250, low: 2500, high: 4000,
+        notes: 'Basic flooring, paint, skirting/trim allowance.',
+        includes: [
+          'Laminate or vinyl floor finish allowance',
+          'Basic floor underlay',
+          'Standard skirting boards',
+          'Basic architraves',
+          'Paint / primer material allowance',
+          'Basic decorating material allowance',
+          'Standard internal door set allowance, if selected in layout',
+          'Basic internal and external light fitting allowances where selected',
+        ],
+        excludes: [
+          'Loose furniture',
+          'Kitchenette',
+          'Sanitaryware',
+          'Specialist wall finishes',
+          'Tiling',
+          'Upgraded lighting design',
+          'Client-selected premium products',
+        ],
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'standard_finishes', name: 'Standard Internal Finishes',
+        provisional_allowance: 5750, low: 4500, high: 7000,
+        notes: 'Improved flooring, decorating, trims and internal finish allowance.',
+        includes: [
+          'Improved laminate, vinyl or engineered-effect floor finish allowance',
+          'Floor underlay, trims and thresholds',
+          'Standard skirting boards',
+          'Architraves',
+          'Paint / primer material allowance',
+          'Decorating material allowance',
+          'Internal door set allowance, if selected in layout',
+          'Internal and external light fitting allowances where selected',
+          'Upgraded trims / finish allowance compared with budget option',
+        ],
+        excludes: [
+          'Loose furniture',
+          'Kitchenette',
+          'Sanitaryware',
+          'Specialist joinery',
+          'Tiling',
+          'Premium decorative finishes',
+          'Client-selected premium products',
+        ],
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
     id: 'furniture', label: 'Furniture / Client Discretion', type: 'qty', phase: 'optional_addons',
     options: [
-      { code: 'kitchenette',    name: 'Kitchenette Allowance',        low: 600, target: 600,  high: 600,  notes: 'Client discretion allowance.' },
-      { code: 'single_bed',    name: 'Single Bed (frame + mattress)', low: 270, target: 270,  high: 270,  notes: 'Client discretion allowance.' },
-      { code: 'double_bed',    name: 'Double Bed (frame + mattress)', low: 370, target: 370,  high: 370,  notes: 'Client discretion allowance.' },
-      { code: 'office_desk',   name: 'Office Desk + Chair',           low: 370, target: 370,  high: 370,  notes: 'Client discretion allowance.' },
-      { code: 'vanity_unit',   name: 'Vanity Unit Allowance',         low: 150, target: 150,  high: 150,  notes: 'Budget vanity allowance. Client-selected sanitaryware may cost more.' },
+      {
+        code: 'kitchenette', name: 'Kitchenette Allowance',
+        provisional_allowance: 600, low: 600, high: 600,
+        notes: 'Client discretion item. Included only if selected.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'single_bed', name: 'Single Bed Package',
+        provisional_allowance: 270, low: 270, high: 270,
+        notes: 'Frame and mattress allowance. Included only if selected.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'double_bed', name: 'Double Bed Package',
+        provisional_allowance: 370, low: 370, high: 370,
+        notes: 'Frame and mattress allowance. Included only if selected.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'office_desk', name: 'Office Desk + Chair',
+        provisional_allowance: 370, low: 370, high: 370,
+        notes: 'Client discretion office furniture allowance. Included only if selected.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'vanity_unit', name: 'Vanity Unit Allowance',
+        provisional_allowance: 150, low: 150, high: 150,
+        notes: 'Budget vanity allowance. Client-selected sanitaryware may cost more.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
   {
-    id: 'groundworks', label: 'Concrete / Groundworks', type: 'radio', phase: 'groundworks_slab',
+    id: 'groundworks', label: 'Base Preparation / Foundations', type: 'radio', phase: 'groundworks_slab',
     options: [
-      { code: 'concrete_material_only',   name: 'Concrete Material Only',           low: null, target: null, high: null, notes: 'From BOM concrete total. Groundworks, labour, formwork excluded.' },
-      { code: 'basic_groundworks_pkg',    name: 'Basic Groundworks Package',         low: 2000, target: 3500, high: 5000, notes: 'High-level provisional allowance only.' },
+      {
+        code: 'screw_pile_foundation', name: 'Screw Pile Foundation Provision',
+        provisional_allowance: 3500, low: 2500, high: 5000,
+        notes: 'Provisional allowance for screw pile foundation option. Final design, pile quantity, depth and specification to be confirmed.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'pad_foundation', name: 'Pad Foundation Provision',
+        provisional_allowance: 2500, low: 1500, high: 4000,
+        notes: 'Provisional allowance for pad foundation option. Final pad sizes, reinforcement and bearing requirements to be confirmed.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'ground_bearing_slab', name: 'Ground-Bearing Slab / Concrete Base Provision',
+        provisional_allowance: 3500, low: 2000, high: 5000,
+        notes: 'Provisional allowance for ground-bearing concrete base option. Excavation, sub-base, formwork, reinforcement and concrete scope to be confirmed.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
+      {
+        code: 'support_frame_base', name: 'Support Frame Base Provision',
+        provisional_allowance: 2800, low: 1800, high: 4500,
+        notes: 'Provisional allowance for raised support frame or alternative base support strategy where suitable.',
+        reference_url: null, datasheet_url: null, supplier_url: null, notes_url: null,
+      },
     ],
   },
 ]
@@ -94,6 +247,7 @@ const ROLE_PHASE = {
   internal_finish: 'base_envelope', sheathing: 'base_envelope',
   insulation: 'base_envelope',      framing_zone: 'base_envelope',
   framing_zone_timber: 'base_envelope', framing_zone_pir: 'base_envelope',
+  framing_zone_insulation: 'base_envelope',
   structure: 'groundworks_slab',    cladding: 'base_envelope',
   external_finish: 'base_envelope', vcl: 'base_envelope',
   breather: 'base_envelope',        airtight_layer: 'base_envelope',
@@ -121,8 +275,8 @@ function resolveQty(pa, bom, qtyOverrides) {
 
 // ── Format helpers ────────────────────────────────────────────────────────────
 
-const fmt  = n => n == null ? '—' : `€${Math.round(n).toLocaleString('en')}`
-const fmtD = n => `€${n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const fmt  = n => n == null ? '—' : `EUR ${Math.round(n).toLocaleString('en')}`
+const fmtD = n => `EUR ${n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 // ── ProvisionalRow — single editable allowance line ──────────────────────────
 
@@ -152,7 +306,7 @@ function ProvisionalRow({ pa, bom, included, quantity, rate, onToggle, onQtyChan
         <span className="ml-1 text-[10px] text-gray-400">{pa.unit}</span>
       </td>
       <td className="py-1.5 px-3 text-right">
-        <span className="text-[10px] text-gray-400 mr-0.5">€</span>
+        <span className="text-[10px] text-gray-400 mr-0.5">EUR</span>
         <input type="number" min="0" step="0.5" value={rate}
           onChange={e => onRateChange(parseFloat(e.target.value) || 0)}
           className="w-16 text-right text-xs tabular-nums border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-900 focus:outline-none focus:border-gray-600"
@@ -166,25 +320,17 @@ function ProvisionalRow({ pa, bom, included, quantity, rate, onToggle, onQtyChan
   )
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
-
-// ── Finish cost group section ─────────────────────────────────────────────────
+// ── FinishCostGroup ───────────────────────────────────────────────────────────
 
 function FinishCostGroup({ groupName, lines }) {
   const [open, setOpen] = useState(true)
   const total = lines.filter(l => l.line_cost != null && l.included !== false)
     .reduce((s, l) => s + l.line_cost, 0)
 
-  const fmtD = n => `€${n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const fmt  = n => n == null ? '—' : `€${Math.round(n).toLocaleString('en')}`
-
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-3">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full px-3 py-2 flex items-center justify-between border-b border-gray-100 text-left"
-      >
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full px-3 py-2 flex items-center justify-between border-b border-gray-100 text-left">
         <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{groupName}</span>
         <div className="flex items-center gap-3">
           <span className="text-xs font-semibold text-gray-900 tabular-nums">{fmt(total)}</span>
@@ -246,8 +392,6 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
   const [included, setIncluded]     = useState({})
   const [qtyOverrides, setQtyOverrides]   = useState({})
   const [rateOverrides, setRateOverrides] = useState({})
-  // Per-package cost overrides: { [code]: { low?, high? } }
-  const [pkgOverrides, setPkgOverrides]   = useState({})
   const [detail, setDetail] = useState(
     Object.fromEntries([
       'base_envelope','interior_finish','services_comfort',
@@ -267,11 +411,11 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
 
   const computeSellingPrice = (cost, s) => {
     if (!s || !cost) return null
-    const markupAmt   = Math.round(cost * s.default_markup_percent / 100 * 100) / 100
-    const exVat       = Math.round((cost + markupAmt) * 100) / 100
-    const vatAmt      = Math.round(exVat * s.vat_rate_percent / 100 * 100) / 100
-    const incVat      = Math.round((exVat + vatAmt) * 100) / 100
-    const rtn         = s.round_to_nearest > 0
+    const markupAmt = Math.round(cost * s.default_markup_percent / 100 * 100) / 100
+    const exVat     = Math.round((cost + markupAmt) * 100) / 100
+    const vatAmt    = Math.round(exVat * s.vat_rate_percent / 100 * 100) / 100
+    const incVat    = Math.round((exVat + vatAmt) * 100) / 100
+    const rtn       = s.round_to_nearest > 0
       ? Math.ceil(incVat / s.round_to_nearest) * s.round_to_nearest
       : incVat
     return { markupAmt, exVat, vatAmt, incVat, rounded: rtn }
@@ -304,7 +448,6 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
   const [finishTotal, setFinishTotal]   = useState(0)
   const [finishLoading, setFinishLoading] = useState(false)
 
-  // Stable key: re-fetch only when specId changes or the selections content changes
   const finishSelectionsKey = specId
     ? `${specId}:${JSON.stringify(finishSelections ?? null)}`
     : null
@@ -314,8 +457,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
     setFinishLoading(true)
     apiFetch(`/pod-specs/${specId}/finish-cost`)
       .then(data => {
-        const lines = data.lines ?? []
-        setFinishLines(lines)
+        setFinishLines(data.lines ?? [])
         setFinishTotal(data.total ?? 0)
       })
       .catch(() => { setFinishLines([]); setFinishTotal(0) })
@@ -335,7 +477,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
 
   // ── Package helpers ─────────────────────────────────────────────────────────
 
-  const setRadio   = (gid, code) => onPackages(p => ({ ...p, [gid]: p[gid] === code ? null : code }))
+  const setRadio    = (gid, code) => onPackages(p => ({ ...p, [gid]: p[gid] === code ? null : code }))
   const toggleMulti = (gid, code) => onPackages(p => {
     const cur = p[gid] || []
     return { ...p, [gid]: cur.includes(code) ? cur.filter(c => c !== code) : [...cur, code] }
@@ -355,19 +497,27 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
     return false
   }
 
-  const pkgLow    = code => pkgOverrides[code]?.low  ?? PKG_BY_CODE[code]?.low
-  const pkgHigh   = code => pkgOverrides[code]?.high ?? PKG_BY_CODE[code]?.high
-  const pkgTarget = code => {
-    const lo = pkgLow(code); const hi = pkgHigh(code)
+  // provisional_allowance takes priority; fall back to midpoint of low/high
+  const pkgProvisional = code => {
+    const opt = PKG_BY_CODE[code]
+    if (!opt) return null
+    if (opt.provisional_allowance != null) return opt.provisional_allowance
+    const lo = opt.low; const hi = opt.high
     return (lo != null && hi != null) ? Math.round((lo + hi) / 2) : (lo ?? hi)
   }
-  const setPkgOverride = (code, field, val) =>
-    setPkgOverrides(o => ({ ...o, [code]: { ...o[code], [field]: val } }))
 
   // ── Phase totals ────────────────────────────────────────────────────────────
 
+  // Exclude structure (concrete slab) from client-facing material totals
   const matPhaseTotal = phase =>
-    bomLines.filter(l => linePhase(l) === phase && l.line_cost != null)
+    bomLines
+      .filter(l => linePhase(l) === phase && l.role !== 'structure' && l.line_cost != null)
+      .reduce((s, l) => s + l.line_cost, 0)
+
+  // Include concrete in internal cost (for selling price calc) but not displayed
+  const matPhaseTotalInternal = phase =>
+    bomLines
+      .filter(l => linePhase(l) === phase && l.line_cost != null)
       .reduce((s, l) => s + l.line_cost, 0)
 
   const pkgPhaseTotal = phase => {
@@ -377,7 +527,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
       for (const o of g.options) {
         if (!isActive(g.id, o.code)) continue
         const qty = g.type === 'qty' ? (packages.furniture?.[o.code] ?? 1) : 1
-        const t = pkgTarget(o.code)
+        const t = pkgProvisional(o.code)
         if (t != null) total += t * qty
       }
     }
@@ -399,29 +549,22 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
 
   const PHASES = ['base_envelope', 'interior_finish', 'services_comfort', 'groundworks_slab', 'optional_addons']
 
-  // Grand totals with low/high
-  const pkgLowTotal  = PACKAGE_GROUPS.flatMap(g => g.options.filter(o => isActive(g.id, o.code)).map(o => {
-    const qty = g.type === 'qty' ? (packages.furniture?.[o.code] ?? 1) : 1
-    return (pkgLow(o.code) ?? pkgTarget(o.code) ?? 0) * qty
-  })).reduce((s, v) => s + v, 0)
-  const pkgHighTotal = PACKAGE_GROUPS.flatMap(g => g.options.filter(o => isActive(g.id, o.code)).map(o => {
-    const qty = g.type === 'qty' ? (packages.furniture?.[o.code] ?? 1) : 1
-    return (pkgHigh(o.code) ?? pkgTarget(o.code) ?? 0) * qty
-  })).reduce((s, v) => s + v, 0)
-  const matTotal  = (bom.total_cost ?? 0) + allowances.reduce((s, a) => s + effCost(a), 0)
-  const grandLow  = Math.round(matTotal + pkgLowTotal  + (finishTotal ?? 0))
-  const grandHigh = Math.round(matTotal + pkgHighTotal + (finishTotal ?? 0))
+  // Single grand total using provisional allowances (internal cost, incl concrete)
+  const internalMatTotal = PHASES.reduce((s, p) => s + matPhaseTotalInternal(p), 0)
+  const provAllTotal = allowances.reduce((s, a) => s + effCost(a), 0)
+  const pkgTotal = PHASES.reduce((s, p) => s + pkgPhaseTotal(p), 0)
+  const grandTotal = Math.round(internalMatTotal + provAllTotal + pkgTotal + (finishTotal ?? 0))
 
   const toggleDetail = p => setDetail(d => ({ ...d, [p]: !d[p] }))
 
-  // ── Reusable section wrapper ────────────────────────────────────────────────
+  // ── Section wrapper ─────────────────────────────────────────────────────────
   const Section = ({ id, title, subtitle, children }) => (
     <div className="mb-8">
       <button type="button" onClick={() => toggleDetail(id)}
-        className="w-full flex items-center justify-between mb-3 text-left group">
+        className="w-full flex items-center justify-between mb-4 text-left group">
         <div>
-          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{title}</div>
-          {subtitle && <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>}
+          <div className="text-sm font-bold text-gray-900">{title}</div>
+          {subtitle && <div className="text-xs text-gray-400 font-normal mt-0.5">{subtitle}</div>}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(phaseTotal(id))}</span>
@@ -435,9 +578,9 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
     </div>
   )
 
-  // ── BOM materials table ─────────────────────────────────────────────────────
+  // ── BOM materials table (excludes concrete slab for groundworks) ─────────
   const MatTable = ({ phase }) => {
-    const lines = bomLines.filter(l => linePhase(l) === phase)
+    const lines = bomLines.filter(l => linePhase(l) === phase && l.role !== 'structure')
     if (lines.length === 0) return null
     const unpriced = lines.filter(l => l.line_cost == null)
     return (
@@ -457,7 +600,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
           </thead>
           <tbody>
             {lines.map((l, i) => (
-              <tr key={i} className={`border-b border-gray-100 last:border-b-0 ${l.unit === 'lm' ? 'bg-amber-50/30' : ''}`}>
+              <tr key={i} className="border-b border-gray-100 last:border-b-0">
                 <td className="py-1.5 px-3 text-gray-800">{l.material_name}</td>
                 <td className="py-1.5 px-3 text-right tabular-nums text-gray-600">{l.order_quantity.toFixed(2)}</td>
                 <td className="py-1.5 px-3 text-gray-500">
@@ -484,7 +627,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
     )
   }
 
-  // ── Package group table for a phase ────────────────────────────────────────
+  // ── Package option card ─────────────────────────────────────────────────────
   const PkgGroupSection = ({ group }) => {
     const g = group
     const isRadio = g.type === 'radio'
@@ -493,28 +636,31 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
 
     return (
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-3 py-2 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-          <span>{g.label}</span>
-          {isRadio && <span className="font-normal normal-case text-gray-300">choose one</span>}
-          {isQty   && <span className="font-normal normal-case text-gray-300">client discretion</span>}
+        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-700">{g.label}</span>
+          <span className="text-[10px] text-gray-400">
+            {isRadio && 'choose one'}
+            {isQty   && 'client discretion'}
+            {g.type === 'multi' && 'select all that apply'}
+          </span>
         </div>
         <div className="divide-y divide-gray-100">
           {g.options.map(opt => {
-            const active  = isActive(g.id, opt.code)
-            const qty     = isQty ? (packages.furniture?.[opt.code] ?? 0) : 1
-            const lo      = pkgLow(opt.code)
-            const hi      = pkgHigh(opt.code)
-            const lineCost = active ? (pkgTarget(opt.code) ?? 0) * qty : 0
+            const active   = isActive(g.id, opt.code)
+            const qty      = isQty ? (packages.furniture?.[opt.code] ?? 0) : 1
+            const prov     = pkgProvisional(opt.code)
+            const lineCost = active ? (prov ?? 0) * qty : 0
+
             return (
-              <div key={opt.code} className={`px-3 py-2.5 ${active ? 'bg-gray-50' : ''}`}>
-                <div className="flex items-start gap-2.5">
+              <div key={opt.code} className={`px-4 py-3 transition-colors ${active ? 'bg-gray-50' : ''}`}>
+                <div className="flex items-start gap-3">
                   {/* Toggle */}
                   {isRadio && (
                     <button type="button" onClick={() => setRadio(g.id, opt.code)}
                       className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 transition-colors ${active ? 'border-gray-900 bg-gray-900' : 'border-gray-300'}`}
                     />
                   )}
-                  {(g.type === 'multi') && (
+                  {g.type === 'multi' && (
                     <input type="checkbox" checked={active}
                       onChange={() => toggleMulti(g.id, opt.code)}
                       className="mt-0.5 rounded shrink-0" />
@@ -531,36 +677,59 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
                   )}
 
                   <div className="flex-1 min-w-0">
+                    {/* Title + provisional allowance */}
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className={`text-xs font-medium ${active ? 'text-gray-900' : 'text-gray-500'}`}>{opt.name}</span>
+                      <span className={`text-sm font-medium leading-snug ${active ? 'text-gray-900' : 'text-gray-500'}`}>
+                        {opt.name}
+                        {isQty && (
+                          <span className="ml-2 text-[10px] font-normal text-gray-400 bg-gray-100 rounded px-1.5 py-0.5">client discretion</span>
+                        )}
+                      </span>
                       <div className="shrink-0 text-right">
-                        {active && lineCost > 0 && (
-                          <span className="text-xs font-semibold text-gray-900 tabular-nums">{fmt(lineCost)}</span>
-                        )}
-                        {!active && lo != null && (
-                          <span className="text-[10px] text-gray-300 tabular-nums">{fmt(lo)} – {fmt(hi)}</span>
-                        )}
+                        {active && lineCost > 0 ? (
+                          <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(lineCost)}</span>
+                        ) : prov != null ? (
+                          <span className="text-xs text-gray-400 tabular-nums">{fmt(prov)} provisional</span>
+                        ) : null}
                       </div>
                     </div>
-                    {active && lo != null && (
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-[10px] text-gray-400">Range:</span>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-gray-400">Low</span>
-                          <input type="number" value={pkgOverrides[opt.code]?.low ?? lo} min="0"
-                            onChange={e => setPkgOverride(opt.code, 'low', parseFloat(e.target.value) || 0)}
-                            className="w-16 text-xs tabular-nums border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-700" />
+
+                    {/* Notes */}
+                    {opt.notes && (
+                      <div className="text-xs text-gray-400 mt-1 leading-relaxed">{opt.notes}</div>
+                    )}
+
+                    {/* Includes / excludes for finishes */}
+                    {active && opt.includes && (
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                        <div>
+                          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Includes</div>
+                          {opt.includes.map((item, i) => (
+                            <div key={i} className="text-[10px] text-gray-500 leading-relaxed flex gap-1">
+                              <span className="text-gray-300 shrink-0">–</span>
+                              <span>{item}</span>
+                            </div>
+                          ))}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-gray-400">High</span>
-                          <input type="number" value={pkgOverrides[opt.code]?.high ?? hi} min="0"
-                            onChange={e => setPkgOverride(opt.code, 'high', parseFloat(e.target.value) || 0)}
-                            className="w-16 text-xs tabular-nums border border-gray-200 rounded px-1 py-0.5 bg-white text-gray-700" />
-                        </div>
+                        {opt.excludes && (
+                          <div>
+                            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Excludes</div>
+                            {opt.excludes.map((item, i) => (
+                              <div key={i} className="text-[10px] text-gray-400 leading-relaxed flex gap-1">
+                                <span className="text-gray-300 shrink-0">–</span>
+                                <span>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {opt.notes && (
-                      <div className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{opt.notes}</div>
+
+                    {/* Provisional allowance label when active */}
+                    {active && prov != null && (
+                      <div className="mt-1.5 text-[10px] text-gray-400">
+                        provisional allowance · final specification and supplier selection to be confirmed
+                      </div>
                     )}
                   </div>
                 </div>
@@ -578,9 +747,9 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
     if (items.length === 0) return null
     return (
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-3 py-2 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-          <span>Provisional sums</span>
-          <span className="text-gray-300 font-normal normal-case">Tick to include · edit qty &amp; rate</span>
+        <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-700">Provisional sums</span>
+          <span className="text-[10px] text-gray-400">Tick to include · edit qty &amp; rate</span>
         </div>
         <table className="w-full text-xs border-collapse">
           <thead>
@@ -607,26 +776,18 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
     )
   }
 
-  // ── Phase subtotal bar ──────────────────────────────────────────────────────
+  // ── Phase subtotal ──────────────────────────────────────────────────────────
   const PhaseSubtotal = ({ phase }) => {
-    const mat  = matPhaseTotal(phase)
-    const pkg  = pkgPhaseTotal(phase)
-    const prov = provPhaseTotal(phase)
-    const total = mat + pkg + prov
+    const total = phaseTotal(phase)
     if (total === 0) return null
     return (
       <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mt-1">
-        <div className="text-xs text-gray-400 space-x-2">
-          {mat > 0  && <span>{fmtD(mat)} materials</span>}
-          {pkg > 0  && <span>{fmt(pkg)} pkg</span>}
-          {prov > 0 && <span>{fmt(prov)} prov. sums</span>}
-        </div>
+        <div className="text-xs text-gray-400">Subtotal</div>
         <div className="text-base font-semibold text-gray-900 tabular-nums">{fmt(total)}</div>
       </div>
     )
   }
 
-  // Groups by phase for rendering
   const groupsForPhase = phase => PACKAGE_GROUPS.filter(g => g.phase === phase)
 
   return (
@@ -638,26 +799,21 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
         </div>
       )}
 
-      {/* Grand total banner */}
+      {/* Grand total banner — single provisional figure */}
       <div className="bg-gray-900 rounded-xl px-6 py-5 mb-3 flex items-center justify-between">
         <div>
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Total Estimate — Internal Cost</div>
-          <div className="flex items-baseline gap-3">
-            <div className="text-3xl font-semibold text-white tabular-nums">{fmt(grandLow)}</div>
-            <div className="text-gray-500 text-sm">–</div>
-            <div className="text-2xl font-semibold text-gray-300 tabular-nums">{fmt(grandHigh)}</div>
-          </div>
-          <div className="text-xs text-gray-500 mt-1">Low – High range based on selected packages</div>
+          <div className="text-3xl font-semibold text-white tabular-nums">{fmt(grandTotal)}</div>
+          <div className="text-xs text-gray-500 mt-1">Based on selected packages · provisional allowances</div>
         </div>
-        <div className="text-right text-xs text-gray-500 max-w-[200px] leading-relaxed">
-          Optional package costs are provisional allowances only. Final price depends on specification, installation and client choices.
+        <div className="text-right text-xs text-gray-500 max-w-[220px] leading-relaxed">
+          Optional package costs are provisional allowances only. Final price depends on specification and client choices.
         </div>
       </div>
 
       {/* Markup / selling price bar */}
       {(() => {
-        const midCost = (grandLow + grandHigh) / 2
-        const sp = computeSellingPrice(midCost, settings)
+        const sp = computeSellingPrice(grandTotal, settings)
         return (
           <div className="bg-gray-800 rounded-xl px-6 py-4 mb-8 border border-gray-700">
             <div className="flex items-center justify-between mb-3">
@@ -665,15 +821,15 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
               <button type="button" onClick={openSettings} title="Edit markup settings"
                 className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-700 transition-colors">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path fillRule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.31 1.55a6.003 6.003 0 011.527.88l1.48-.56a1 1 0 011.21.433l1.18 2.044a1 1 0 01-.25 1.298l-1.24.93a6.07 6.07 0 010 1.762l1.24.93a1 1 0 01.25 1.298l-1.18 2.044a1 1 0 01-1.21.434l-1.48-.56a6.003 6.003 0 01-1.527.88l-.31 1.55A1 1 0 0111.18 19H8.82a1 1 0 01-.98-.804l-.31-1.55a6.003 6.003 0 01-1.527-.88l-1.48.56a1 1 0 01-1.21-.433L2.13 13.849a1 1 0 01.25-1.298l1.24-.93a6.07 6.07 0 010-1.762l-1.24-.93a1 1 0 01-.25-1.298L3.31 5.587a1 1 0 011.21-.434l1.48.56a6.003 6.003 0 011.527-.88l.31-1.55zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                  <path fillRule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.31 1.55a6.003 6.003 0 011.527.88l1.48-.56a1 1 0 011.21.433l1.18 2.044a1 1 0 01-.25 1.298l-1.24.93a6.07 6.07 0 010 1.762l1.24.93a1 1 0 01.25 1.298l-1.18 2.044a1 1 0 01-1.21.434l-1.48-.56a6.003 6.003 0 01-1.527-.88l-.31 1.55A1 1 0 0111.18 19H8.82a1 1 0 01-.98-.804l-.31-1.55a6.003 6.003 0 01-1.527-.88l-1.48.56a1 1 0 01-1.21-.433L2.13 13.849a1 1 0 01.25-1.298l1.24-.93a6.07 6.07 0 010-1.762l-1.24-.93a1 1 0 01-.25-1.298L3.31 5.587a1 1 0 011.21-.434l1.48.56a6.003 6.003 0 011.527-.88l.31-1.55zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
                 </svg>
               </button>
             </div>
             {settings && sp ? (
               <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Internal cost (mid)</span>
-                  <span className="text-gray-200 tabular-nums font-medium">{fmt(Math.round(midCost))}</span>
+                  <span className="text-gray-400">Internal cost</span>
+                  <span className="text-gray-200 tabular-nums font-medium">{fmt(grandTotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-400">Markup ({settings.default_markup_percent}%)</span>
@@ -693,7 +849,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
                 </div>
                 {settings.round_to_nearest > 0 && (
                   <div className="flex justify-between border-t border-gray-600 pt-1.5 mt-0.5">
-                    <span className="text-amber-400 font-semibold">Rounded (to €{settings.round_to_nearest})</span>
+                    <span className="text-amber-400 font-semibold">Rounded (to EUR {settings.round_to_nearest})</span>
                     <span className="text-amber-400 tabular-nums font-bold text-sm">{fmt(sp.rounded)}</span>
                   </div>
                 )}
@@ -729,7 +885,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
                   className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-500" />
               </label>
               <label className="block">
-                <span className="text-xs font-medium text-gray-600">Round to nearest (€)</span>
+                <span className="text-xs font-medium text-gray-600">Round to nearest (EUR)</span>
                 <input type="number" min="0" step="50" value={settingsDraft.round_to_nearest}
                   onChange={e => setSettingsDraft(d => ({ ...d, round_to_nearest: parseInt(e.target.value) || 0 }))}
                   className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-500" />
@@ -750,57 +906,67 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
         </div>
       )}
 
-      {/* ── Phase 1: Base Envelope ────────────────────────────────── */}
-      {Section({ id: 'base_envelope', title: 'Base Envelope / Weatherproof Shell',
-        subtitle: 'Insulated shell, cladding, roof finish, openings', children: (<>
-          {MatTable({ phase: 'base_envelope' })}
-          {groupsForPhase('base_envelope').map(g => PkgGroupSection({ group: g }))}
-          {ProvTable({ phase: 'base_envelope' })}
-          {PhaseSubtotal({ phase: 'base_envelope' })}
-        </>)
-      })}
+      {/* ── 1. Base Envelope ─────────────────────────────────────── */}
+      <Section id="base_envelope"
+        title="Base Envelope / Weatherproof Shell"
+        subtitle="Insulated shell, cladding, roof finish and openings">
+        <MatTable phase="base_envelope" />
+        {groupsForPhase('base_envelope').map(g => <PkgGroupSection key={g.id} group={g} />)}
+        <ProvTable phase="base_envelope" />
+        <PhaseSubtotal phase="base_envelope" />
+      </Section>
 
-      {/* ── Phase 2: Interior Finishes ────────────────────────────── */}
-      {Section({ id: 'interior_finish', title: 'Interior Finishes — Optional',
-        subtitle: 'Flooring, paint, trims and internal finish packages', children: (<>
-          {groupsForPhase('interior_finish').map(g => PkgGroupSection({ group: g }))}
-          {ProvTable({ phase: 'interior_finish' })}
-          <div className="text-[10px] text-gray-400 italic px-1">
-            Furniture and sanitaryware are client discretion items and are not included in the base pod unless selected.
+      {/* ── 2. Interior Finishes ─────────────────────────────────── */}
+      <Section id="interior_finish"
+        title="Interior Finishes — Optional"
+        subtitle="Flooring, decorating, trims and internal finish packages">
+        {groupsForPhase('interior_finish').map(g => <PkgGroupSection key={g.id} group={g} />)}
+        <ProvTable phase="interior_finish" />
+        <div className="text-xs text-gray-400 px-1 leading-relaxed">
+          Furniture and sanitaryware are client discretion items and are not included in the base pod unless selected.
+        </div>
+        <PhaseSubtotal phase="interior_finish" />
+      </Section>
+
+      {/* ── 3. Heating + Ventilation ─────────────────────────────── */}
+      <Section id="services_comfort"
+        title="Heating + Ventilation — Optional"
+        subtitle="Heating and ventilation provisional allowances">
+        {groupsForPhase('services_comfort').map(g => <PkgGroupSection key={g.id} group={g} />)}
+        <PhaseSubtotal phase="services_comfort" />
+      </Section>
+
+      {/* ── 4. Base Preparation / Foundations ───────────────────── */}
+      <Section id="groundworks_slab"
+        title="Base Preparation / Foundations — Extra"
+        subtitle="Foundation and base preparation options">
+        {groupsForPhase('groundworks_slab').map(g => <PkgGroupSection key={g.id} group={g} />)}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1">
+          <div className="text-xs font-semibold text-amber-800">Engineer's disclaimer</div>
+          <div className="text-xs text-amber-700 leading-relaxed">
+            Foundation and base calculations to be completed by the client's appointed engineer.
           </div>
-          {PhaseSubtotal({ phase: 'interior_finish' })}
-        </>)
-      })}
-
-      {/* ── Phase 3: Services / Comfort ───────────────────────────── */}
-      {Section({ id: 'services_comfort', title: 'Heating + Ventilation — Optional', children: (<>
-          {groupsForPhase('services_comfort').map(g => PkgGroupSection({ group: g }))}
-          {PhaseSubtotal({ phase: 'services_comfort' })}
-        </>)
-      })}
-
-      {/* ── Phase 4: Groundworks ──────────────────────────────────── */}
-      {Section({ id: 'groundworks_slab', title: 'Concrete / Groundworks — Extra', children: (<>
-          {groupsForPhase('groundworks_slab').map(g => PkgGroupSection({ group: g }))}
-          {MatTable({ phase: 'groundworks_slab' })}
-          <div className="text-[10px] text-gray-400 italic px-1">
-            Concrete and groundworks are separate extras unless specifically selected. Ground-bearing slab to be reviewed by appointed structural engineer.
+          <div className="text-xs text-amber-600 leading-relaxed">
+            Different foundation options may be available, including screw piles, pad foundations, ground-bearing concrete base or other engineered support systems. Final suitability depends on site investigation, ground conditions, access and engineer design.
           </div>
-          {PhaseSubtotal({ phase: 'groundworks_slab' })}
-        </>)
-      })}
+        </div>
+        <PhaseSubtotal phase="groundworks_slab" />
+      </Section>
 
-      {/* ── Phase 5: Optional Add-Ons ─────────────────────────────── */}
-      {Section({ id: 'optional_addons', title: 'Optional Add-Ons', children: (<>
-          {groupsForPhase('optional_addons').map(g => PkgGroupSection({ group: g }))}
-          {ProvTable({ phase: 'optional_addons' })}
-          {PhaseSubtotal({ phase: 'optional_addons' })}
-        </>)
-      })}
+      {/* ── 5. Optional Add-Ons ──────────────────────────────────── */}
+      <Section id="optional_addons"
+        title="Optional Add-Ons"
+        subtitle="CCTV / data, PV provision, furniture and client discretion items">
+        {groupsForPhase('optional_addons').map(g => <PkgGroupSection key={g.id} group={g} />)}
+        <div className="text-xs text-gray-400 px-1 leading-relaxed">
+          PV system, inverter, battery, grid connection and certification are not included unless separately selected.
+        </div>
+        <ProvTable phase="optional_addons" />
+        <PhaseSubtotal phase="optional_addons" />
+      </Section>
 
-      {/* ── Finishes & Furniture (from catalogue selections) ──────── */}
+      {/* ── Finishes catalogue selections ────────────────────────── */}
       {(finishLines.length > 0 || finishLoading) && (() => {
-        // Group lines by cost_group
         const groups = {}
         for (const l of finishLines) {
           const g = l.cost_group || 'Other'
@@ -811,10 +977,10 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
         return (
           <div className="mb-8">
             <button type="button" onClick={() => toggleDetail('finishes_catalogue')}
-              className="w-full flex items-center justify-between mb-3 text-left group">
+              className="w-full flex items-center justify-between mb-4 text-left group">
               <div>
-                <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Finishes &amp; Furniture — Catalogue Selections</div>
-                <div className="text-xs text-gray-500 mt-0.5">Items selected in the Finishes tab</div>
+                <div className="text-sm font-bold text-gray-900">Finishes &amp; Furniture — Catalogue Selections</div>
+                <div className="text-xs text-gray-400 font-normal mt-0.5">Items selected in the Finishes tab</div>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmt(subtotal)}</span>
@@ -849,8 +1015,8 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
       })()}
 
       {/* Exclusions */}
-      <div className="border-t border-gray-200 pt-4 mt-2">
-        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Exclusions</div>
+      <div className="border-t border-gray-200 pt-5 mt-2">
+        <div className="text-xs font-bold text-gray-700 mb-2">Exclusions</div>
         <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
           <li>Labour / installation (unless groundworks installed allowance selected)</li>
           <li>MEP — electrical distribution, plumbing, heating</li>
