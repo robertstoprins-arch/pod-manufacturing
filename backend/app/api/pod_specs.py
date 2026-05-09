@@ -8,11 +8,15 @@ PUT    /pod-specs/{id}         update
 DELETE /pod-specs/{id}         delete (204)
 GET    /pod-specs/{id}/bom     compute material schedule from geometry + assigned build-ups
 """
+import logging
+import traceback
 from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, ConfigDict
 
 from app.db import get_db
@@ -799,7 +803,11 @@ def generate_review_pack(spec_id: int, body: ReviewPackIn, db: Db):
         round_to_nearest=rtn,
     )
 
-    pdf_bytes = ReviewPackPDF(data).generate()
+    try:
+        pdf_bytes = ReviewPackPDF(data).generate()
+    except Exception as exc:
+        logger.error("ReviewPackPDF failed for spec %s: %s\n%s", spec_id, exc, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"PDF generation error: {exc}")
     filename = f"pod-internal-technical-pack-{spec.name.lower().replace(' ', '-')}-rev{body.revision}.pdf"
     return Response(
         content=pdf_bytes,
@@ -873,7 +881,11 @@ def generate_client_quote(spec_id: int, body: ClientQuoteIn, db: Db):
         round_to_nearest=rtn,
     )
 
-    pdf_bytes = ClientQuotePDF(data, customer_name=body.customer_name).generate()
+    try:
+        pdf_bytes = ClientQuotePDF(data, customer_name=body.customer_name).generate()
+    except Exception as exc:
+        logger.error("ClientQuotePDF failed for spec %s: %s\n%s", spec_id, exc, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"PDF generation error: {exc}")
     slug = (body.customer_name or spec.name).lower().replace(" ", "-")
     filename = f"pod-client-quote-{slug}.pdf"
     return Response(
