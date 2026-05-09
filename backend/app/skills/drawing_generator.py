@@ -859,7 +859,8 @@ def manufacture_plan_svg(
         if w in by_wall:
             by_wall[w].append(o)
 
-    schedule: list[tuple[str, str, int, int]] = []   # (tag, type, width_mm, wall)
+    # (tag, type_str, width_mm, height_mm, location)
+    schedule: list[tuple[str, str, int, int, str]] = []
     door_n = window_n = french_n = 0
 
     def _make_tag(o_type: str) -> str:
@@ -885,7 +886,8 @@ def manufacture_plan_svg(
             tag   = _make_tag(o["type"])
             ow_px = o["width_m"] * S
             rx    = ox + x_m * S
-            schedule.append((tag, o["type"], int(o["width_m"]*1000), face))
+            schedule.append((tag, o["type"], int(o["width_m"]*1000),
+                             int(o["height_m"]*1000), f"Wall {face}"))
 
             # Opening gap + centre line
             parts.append(_r(rx, wall_y, ow_px, WT, "white", "none"))
@@ -907,12 +909,18 @@ def manufacture_plan_svg(
                     f'stroke="{_DIM}" stroke-width="0.7" stroke-dasharray="4,3" fill="none"/>'
                 )
 
-            # Tag badge + size label
-            tag_ofs = WT + 18
-            ty = wall_y - tag_ofs if above_plan else wall_y + tag_ofs
+            # Tag badge + size label — placed INSIDE the pod footprint
+            # N wall (above_plan=True): interior is below → offset inward from wall bottom face
+            # S wall (above_plan=False): interior is above → offset inward from wall top face
+            tag_ofs = 14
+            if above_plan:
+                ty = wall_y + WT + tag_ofs          # inside, below N wall
+                lbl_y = ty + 16
+            else:
+                ty = wall_y - tag_ofs               # inside, above S wall
+                lbl_y = ty - 16
             parts.append(_mfr_tag(rx + ow_px/2, ty, tag))
             size_lbl = f"{int(o['width_m']*1000)} × {int(o['height_m']*1000)}"
-            lbl_y = (ty - 16) if above_plan else (ty + 20)
             parts.append(_t(rx + ow_px/2, lbl_y, size_lbl, _DS_FONT - 4, "middle", _OPEN_LINE))
 
             # Opening width dim (level 0, closest to wall)
@@ -953,7 +961,8 @@ def manufacture_plan_svg(
             tag   = _make_tag(o["type"])
             ow_px = o["width_m"] * S
             ry    = oy + y_m * S
-            schedule.append((tag, o["type"], int(o["width_m"]*1000), face))
+            schedule.append((tag, o["type"], int(o["width_m"]*1000),
+                             int(o["height_m"]*1000), f"Wall {face}"))
 
             parts.append(_r(wall_x, ry, WT, ow_px, "white", "none"))
             parts.append(_l(wall_x + WT/2, ry, wall_x + WT/2, ry + ow_px, _OPEN_LINE, 2.0))
@@ -973,11 +982,18 @@ def manufacture_plan_svg(
                     f'stroke="{_DIM}" stroke-width="0.7" stroke-dasharray="4,3" fill="none"/>'
                 )
 
-            tag_ofs = WT + 18
-            tx = wall_x - tag_ofs if left_of_plan else wall_x + tag_ofs
+            # Tag badge + size label — placed INSIDE the pod footprint
+            # W wall (left_of_plan=True): interior is to the right → offset inward from E face of W wall
+            # E wall (left_of_plan=False): interior is to the left → offset inward from W face of E wall
+            tag_ofs = 14
+            if left_of_plan:
+                tx = wall_x + WT + tag_ofs          # inside, right of W wall
+                lbl_x = tx + 24
+            else:
+                tx = wall_x - tag_ofs               # inside, left of E wall
+                lbl_x = tx - 24
             parts.append(_mfr_tag(tx, ry + ow_px/2, tag))
             size_lbl = f"{int(o['width_m']*1000)} × {int(o['height_m']*1000)}"
-            lbl_x = (tx - 22) if left_of_plan else (tx + 22)
             parts.append(_t(lbl_x, ry + ow_px/2 + 4, size_lbl, _DS_FONT - 4, "middle", _OPEN_LINE))
 
             parts.append(_vdim(ry, ry + ow_px, wall_x if left_of_plan else wall_x + WT,
@@ -1029,7 +1045,7 @@ def manufacture_plan_svg(
         # Rooflight size label
         parts.append(_t(rpx + rw_p/2, rpy - 6,
                         f"{int(rw_m*1000)}×{int(rh_m*1000)}", 7, "middle", "#2563EB"))
-        schedule.append((f"RL{rl_n}", "rooflight", int(rw_m*1000), "roof"))
+        schedule.append((f"RL{rl_n}", "rooflight", int(rw_m*1000), int(rh_m*1000), "Roof/Ceiling"))
 
     # ── Wall thickness callout ─────────────────────────────────────────────────
     # Small double-headed dim on E wall, placed below centre so it doesn't
@@ -1058,26 +1074,51 @@ def manufacture_plan_svg(
     parts.append(_t(cx, cy + (16 if name_label else 8),
                     f"Internal: {internal_area:.1f} m²", 9, "middle", "#777"))
 
-    # ── Opening schedule (below plan, above title block, right-aligned) ────────
+    # ── Opening schedule ────────────────────────────────────────────────────────
+    # Protected bounding box: lower-right of viewport, above title block.
+    # Columns: REF | TYPE | W(mm) | H(mm) | LOCATION
     if schedule:
-        sch_x = vp_x + vp_w - 200
-        sch_y = oy + ph + DZ + 6     # below the plan dim zone
-        # Clamp to stay above title block
-        sch_y = min(sch_y, tb_y - len(schedule) * 13 - 20)
-        parts.append(_t(sch_x, sch_y, "OPENING SCHEDULE", 7, "start", _DIM, "bold"))
-        sch_y += 12
-        # Header
-        for col_dx, col_lbl in ((0, "REF"), (38, "TYPE"), (100, "WIDTH"), (150, "WALL")):
+        SCH_W   = 270                          # total schedule width in px
+        ROW_H   = 13                           # px per row
+        HDR_H   = 28                           # px for title + column headers
+        sch_rows = len(schedule)
+        sch_h    = HDR_H + sch_rows * ROW_H + 6
+
+        # Anchor: right edge of viewport, above title block
+        sch_x = vp_x + vp_w - SCH_W - 4
+        # Prefer placing below plan+DZ, but clamp so it never overruns title block
+        sch_y_ideal = oy + ph + DZ + 8
+        sch_y = min(sch_y_ideal, tb_y - sch_h - 8)
+        # If there's not enough room below plan, push it to the right of the plan
+        if sch_y < oy:
+            sch_y = oy
+
+        # Background box so schedule is readable regardless of dim lines behind it
+        parts.append(
+            f'<rect x="{sch_x - 4:.1f}" y="{sch_y - 4:.1f}" '
+            f'width="{SCH_W + 8:.0f}" height="{sch_h:.0f}" '
+            f'fill="white" stroke="#CCCCCC" stroke-width="0.5" rx="2"/>'
+        )
+
+        parts.append(_t(sch_x, sch_y + 8, "OPENING SCHEDULE", 7, "start", _DIM, "bold"))
+        sch_y += 16
+        COLS = ((0, "REF"), (34, "TYPE"), (108, "W mm"), (150, "H mm"), (196, "LOCATION"))
+        for col_dx, col_lbl in COLS:
             parts.append(_t(sch_x + col_dx, sch_y, col_lbl, 6.5, "start", _DIM))
         sch_y += 3
-        parts.append(_l(sch_x - 2, sch_y, sch_x + 195, sch_y, _DIM, 0.4))
-        sch_y += 8
-        for tag, o_type, w_mm, wall in schedule:
-            type_str = {"door": "Ext. Door", "french_door": "Fr. Door",
-                        "window": "Window", "rooflight": "Rooflight"}.get(o_type, o_type)
-            for col_dx, col_val in ((0, tag), (38, type_str), (100, f"{w_mm}"), (150, wall)):
+        parts.append(_l(sch_x - 2, sch_y, sch_x + SCH_W, sch_y, _DIM, 0.4))
+        sch_y += 10
+        TYPE_LABELS = {
+            "door": "Ext. Door", "french_door": "Fr. Door",
+            "window": "Window", "rooflight": "Rooflight",
+        }
+        for tag, o_type, w_mm, h_mm, location in schedule:
+            type_str = TYPE_LABELS.get(o_type, o_type)
+            for col_dx, col_val in (
+                (0, tag), (34, type_str), (108, str(w_mm)), (150, str(h_mm)), (196, location)
+            ):
                 parts.append(_t(sch_x + col_dx, sch_y, col_val, 7, "start", _LABEL))
-            sch_y += 12
+            sch_y += ROW_H
 
     # ── Title block ────────────────────────────────────────────────────────────
     # Three columns: [Project + Title + Disclaimer] | [Drawing No + Client ID] | [Cells grid]
