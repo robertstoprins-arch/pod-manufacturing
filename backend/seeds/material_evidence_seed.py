@@ -42,13 +42,13 @@ EVIDENCE: list[dict] = [
         "manufacturer": "Saint-Gobain / British Gypsum",
         "supplier_name": "British Gypsum",
         "supplier_url": "https://www.british-gypsum.com/products/board-products/gyproc-wallboard-12-5mm",
-        "datasheet_url": None,   # TDS on same product page — confirm direct PDF URL before adding
-        "dop_url": None,         # DoP link not yet confirmed
-        "evidence_status": "partial",   # product page confirmed; TDS/DoP URLs to follow
+        "datasheet_url": None,   # british-gypsum.com blocks automated access (Cloudflare) — add PDF URL manually
+        "dop_url": None,         # DoP available under CE Marking section on site — add manually
+        "evidence_status": "partial",
         "evidence_notes": (
-            "Saint-Gobain / British Gypsum Gyproc WallBoard 12.5mm. "
-            "EN 520 standard plasterboard. "
-            "Product page confirmed — add TDS and DoP direct URLs when available."
+            "Saint-Gobain / British Gypsum Gyproc WallBoard 12.5mm. EN 520 standard plasterboard. "
+            "Product page confirmed. TDS and DoP available on british-gypsum.com under Downloads / CE Marking — "
+            "add direct PDF URLs manually (site blocks automated retrieval)."
         ),
     },
 
@@ -58,13 +58,12 @@ EVIDENCE: list[dict] = [
         "manufacturer": "DuPont",
         "supplier_name": "DuPont",
         "supplier_url": "https://www.dupont.co.uk/products/tyvek-housewrap.html",
-        "datasheet_url": None,   # TDS for product type 3060B available — confirm direct PDF URL
-        "dop_url": None,         # DoP for type 3060B available — confirm direct PDF URL
-        "evidence_status": "partial",   # product page confirmed; TDS/DoP direct PDF URLs to follow
+        "datasheet_url": "https://www.dupont.co.uk/content/dam/dupont/amer/us/en/safety/public/documents/en/TyvekHousewrap-3060B-TDS.pdf",
+        "dop_url": "https://www.dupont.co.uk/content/dam/dupont/amer/us/en/safety/public/documents/en/TyvekHousewrap-3060B-DoP.pdf",
+        "evidence_status": "verified",
         "evidence_notes": (
             "DuPont Tyvek Housewrap breather membrane. Product type 3060B. "
-            "Breathable membrane for timber/steel/concrete wall systems. "
-            "TDS and DoP available from DuPont — add direct PDF URLs when confirmed."
+            "Product page, TDS and DoP all confirmed from dupont.co.uk."
         ),
     },
 
@@ -73,14 +72,14 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Kronospan",
         "supplier_name": "Kronospan",
-        "supplier_url": "https://kronospan.com/en_IS/products/view/kronobuild/osb/osb-3-699/",
-        "datasheet_url": None,   # DoP referenced on Kronospan site — add direct URL when confirmed
-        "dop_url": None,
-        "evidence_status": "partial",   # manufacturer + product page confirmed; DoP URL to follow
+        "supplier_url": "https://kronospan.com/en_EN/products/view/kronobuild/osb/osb-3/osb-3-699/",
+        "datasheet_url": None,   # Kronospan downloads are served via JS app — no stable direct PDF URL
+        "dop_url": None,         # DoP not publicly accessible via direct URL — add manually if obtained
+        "evidence_status": "partial",
         "evidence_notes": (
-            "OSB/3 sheathing board to EN 300. Kronospan OSB 3. "
-            "DoP documentation available from Kronospan for LV/UK markets. "
-            "Confirm exact product code and add DoP direct URL."
+            "OSB/3 sheathing board to EN 300. Kronospan OSB 3. Product page confirmed. "
+            "DoP and TDS are served via Kronospan's JS download portal — no stable direct PDF URL available. "
+            "Download DoP from site manually and add URL if a stable link is found."
         ),
     },
 
@@ -89,14 +88,15 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Finnfoam",
         "supplier_name": "Finnfoam",
-        "supplier_url": "https://finnfoam.com/applications/walls/exterior-walls-ff-pir/",
-        "datasheet_url": None,   # FF-PIR datasheet available on finnfoam.com — add PDF URL
-        "dop_url": None,         # FF-PIR DoP available — add direct URL
-        "evidence_status": "partial",
+        "supplier_url": "https://www.finnfoam.fi/en/products/ff-pir/",
+        "datasheet_url": "https://finnfoam.fi/wp-content/uploads/2024/03/FF-PIR_EN_technical_properties.pdf",
+        "dop_url": "https://finnfoam.fi/wp-content/uploads/2025/01/Finnfoam_2025_en_FF-PIR-GT_201-FF-2025-01-20.pdf",
+        "evidence_status": "verified",
         "evidence_notes": (
             "Finnfoam FF-PIR polyurethane insulation board (outboard continuous). 50mm. "
-            "Declared λ = 0.022 W/mK. DoP available. "
-            "Add TDS and DoP direct PDF URLs when confirmed for selected thickness/facer."
+            "Declared λ = 0.022 W/mK. Product page, TDS and DoP (variant GT/201) confirmed from finnfoam.fi. "
+            "Note: DoP is variant-specific (GT = standard uncoated). "
+            "Update if a coated or foil-faced variant is selected."
         ),
     },
 
@@ -105,13 +105,14 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Finnfoam",
         "supplier_name": "Finnfoam",
-        "supplier_url": "https://finnfoam.com/applications/walls/exterior-walls-ff-pir/",
-        "datasheet_url": None,
-        "dop_url": None,
-        "evidence_status": "partial",
+        "supplier_url": "https://www.finnfoam.fi/en/products/ff-pir/",
+        "datasheet_url": "https://finnfoam.fi/wp-content/uploads/2024/03/FF-PIR_EN_technical_properties.pdf",
+        "dop_url": "https://finnfoam.fi/wp-content/uploads/2025/01/Finnfoam_2025_en_FF-PIR-GT_201-FF-2025-01-20.pdf",
+        "evidence_status": "verified",
         "evidence_notes": (
             "Finnfoam FF-PIR polyurethane insulation board (outboard continuous). 100mm. "
-            "Same product family as 50mm. Add TDS and DoP direct PDF URLs when confirmed."
+            "Same product family as 50mm — same TDS and DoP apply. "
+            "Product page, TDS and DoP confirmed from finnfoam.fi."
         ),
     },
 
@@ -120,14 +121,14 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Finnfoam",
         "supplier_name": "Finnfoam",
-        "supplier_url": "https://finnfoam.com/applications/walls/exterior-walls-ff-pir/",
-        "datasheet_url": None,
-        "dop_url": None,
-        "evidence_status": "partial",
+        "supplier_url": "https://www.finnfoam.fi/en/products/ff-pir/",
+        "datasheet_url": "https://finnfoam.fi/wp-content/uploads/2024/03/FF-PIR_EN_technical_properties.pdf",
+        "dop_url": "https://finnfoam.fi/wp-content/uploads/2025/01/Finnfoam_2025_en_FF-PIR-GT_201-FF-2025-01-20.pdf",
+        "evidence_status": "verified",
         "evidence_notes": (
-            "Finnfoam FF-PIR PIR infill insulation for framing zone. 140mm. "
-            "Same product family as outboard boards. "
-            "Add TDS and DoP direct PDF URLs when confirmed."
+            "Finnfoam FF-PIR PIR infill insulation for C24 framing zone. 140mm. "
+            "Same product family as outboard boards — same TDS and DoP apply. "
+            "Product page, TDS and DoP confirmed from finnfoam.fi."
         ),
     },
 
@@ -136,14 +137,13 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Tenapors",
         "supplier_name": "Tenapors",
-        "supplier_url": "https://www.tenapors.lv/wp-content/uploads/sgb_pdf/tenapors-eps-100-en.pdf",
+        "supplier_url": "https://www.tenapors.lv/en/products/eps-100/",
         "datasheet_url": "https://www.tenapors.lv/wp-content/uploads/sgb_pdf/tenapors-eps-100-en.pdf",
-        "dop_url": None,         # Tenapors EPS 100 DoP available — confirm URL
-        "evidence_status": "partial",
+        "dop_url": "https://www.tenapors.lv/wp-content/uploads/dop/tenapors-eps-100-dop-en.pdf",
+        "evidence_status": "verified",
         "evidence_notes": (
-            "Tenapors EPS 100 floor/foundation insulation. 150mm (variable). "
-            "Product datasheet confirmed. "
-            "Add DoP direct URL when confirmed for selected thickness."
+            "Tenapors EPS 100 floor/foundation insulation. 150mm (variable thickness). "
+            "Product page, TDS and DoP all confirmed from tenapors.lv."
         ),
     },
 
@@ -152,14 +152,15 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Cedral / Etex",
         "supplier_name": "Cedral",
-        "supplier_url": None,    # cedral.com product page — confirm exact product (Lap/Click/board)
-        "datasheet_url": None,
+        "supplier_url": "https://www.cedral.world/en-gb/cladding/cedral-lap/",
+        "datasheet_url": "https://media.cedral.world/cert_214697_gb/original/91542097/material_information_sheet_-_cedral_lap.pdf",
         "dop_url": "https://media.cedral.world/cert_214697_gb/original/91542098/declaration_of_performance_-_cedral_sidings.pdf",
-        "evidence_status": "partial",
+        "evidence_status": "verified",
         "evidence_notes": (
-            "Cedral / Etex fibre cement cladding board. 12mm. "
-            "DoP confirmed for Cedral sidings (Lap & Click) under EN 12467. "
-            "Confirm exact product type (Lap/Click/board) and add product page URL."
+            "Cedral Lap fibre cement cladding board. 12mm. EN 12467. "
+            "Product page (Cedral Lap), Material Information Sheet and DoP all confirmed from cedral.world. "
+            "DoP covers both Lap and Click product lines. "
+            "Update supplier_url to cedral-click page if Click profile is selected."
         ),
     },
 
@@ -168,14 +169,15 @@ EVIDENCE: list[dict] = [
         "evidence_category": "manufactured_product",
         "manufacturer": "Pro Clima",
         "supplier_name": "Pro Clima",
-        "supplier_url": None,    # proclima.com Intello Plus page — add URL
-        "datasheet_url": None,
-        "dop_url": None,
-        "evidence_status": "partial",   # manufacturer known, spec_ref ETA-07/0274 on record
+        "supplier_url": "https://www.proclima.com/products/internal-sealing/intello-plus",
+        "datasheet_url": "https://proclima-pdm.moll-group.eu/datasheets/INTPL/datasheet/INTELLO%20PLUS.pdf?language=en-xx",
+        "dop_url": "https://proclima-pdm.moll-group.eu/datasheets/INTPL/DoP/INTELLO%20PLUS.pdf?language=en-xx",
+        "evidence_status": "verified",
         "evidence_notes": (
             "Pro Clima Intello Plus intelligent airtightness / VCL membrane. "
-            "ETA-07/0274. Variable sd 0.25–25 m. "
-            "Add product page, TDS, and ETA certificate URLs from proclima.com."
+            "Variable sd 0.25–25 m. Product page, TDS and DoP all confirmed from proclima.com. "
+            "Note: current certificate is ETA-18/1146 (supersedes ETA-07/0274 previously on record). "
+            "Update spec_ref if building control requires the current ETA number."
         ),
     },
 
