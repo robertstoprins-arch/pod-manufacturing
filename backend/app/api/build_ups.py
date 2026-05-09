@@ -53,6 +53,7 @@ class MaterialOut(BaseModel):
     price_checked_at: date | None
     evidence_status: str
     evidence_notes: str | None
+    evidence_category: str
     lambda_W_mK: float | None
     density_kg_m3: float | None
     fire_euroclass: str | None
@@ -64,6 +65,33 @@ class MaterialOut(BaseModel):
 
 
 VALID_EVIDENCE_STATUSES = {"verified", "partial", "missing", "provisional"}
+
+# Categories where a missing datasheet/DoP is expected and normal
+_ASSEMBLY_CATEGORIES = {"generic_assembly", "provisional_allowance", "service_item"}
+
+
+def _auto_evidence_status(mat) -> str:
+    """Compute evidence status from category + available fields."""
+    cat = getattr(mat, "evidence_category", "manufactured_product") or "manufactured_product"
+
+    if cat in _ASSEMBLY_CATEGORIES:
+        return "provisional"
+
+    if cat == "raw_material":
+        # Raw/site materials: partial if any supplier/spec source; missing otherwise
+        has_any = bool(mat.supplier_url or mat.supplier_name or mat.datasheet_url)
+        return "partial" if has_any else "missing"
+
+    # Default: manufactured_product
+    has_datasheet = bool(mat.datasheet_url)
+    has_supplier  = bool(mat.supplier_url or mat.supplier_name)
+    has_mfr       = bool(mat.manufacturer)
+    if has_datasheet and has_mfr and has_supplier:
+        return "verified"
+    if has_datasheet or has_supplier:
+        return "partial"
+    return "missing"
+
 
 class EvidenceIn(BaseModel):
     manufacturer: str | None = None
@@ -77,6 +105,7 @@ class EvidenceIn(BaseModel):
     price_checked_at: str | None = None  # ISO date "YYYY-MM-DD"
     evidence_notes: str | None = None
     evidence_status_override: str | None = None  # manual override; None = auto-compute
+    evidence_category: str | None = None  # manufactured_product | generic_assembly | raw_material | provisional_allowance | service_item
 
 
 class LayerIn(BaseModel):
@@ -350,6 +379,8 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
             pass
     if body.evidence_notes is not None:
         mat.evidence_notes = body.evidence_notes or None
+    if body.evidence_category is not None:
+        mat.evidence_category = body.evidence_category
 
     # Evidence status: manual override takes precedence over auto-compute
     if body.evidence_status_override is not None:
@@ -357,16 +388,7 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
         if override in VALID_EVIDENCE_STATUSES:
             mat.evidence_status = override
     else:
-        has_datasheet  = bool(mat.datasheet_url)
-        has_supplier   = bool(mat.supplier_url or mat.supplier_name)
-        has_lambda     = mat.lambda_W_mK is not None and mat.lambda_W_mK > 0
-        has_mfr        = bool(mat.manufacturer)
-        if has_datasheet and has_lambda and has_mfr and has_supplier:
-            mat.evidence_status = "verified"
-        elif has_datasheet or has_supplier:
-            mat.evidence_status = "partial"
-        else:
-            mat.evidence_status = "missing"
+        mat.evidence_status = _auto_evidence_status(mat)
 
     db.commit()
     db.refresh(mat)
@@ -388,21 +410,11 @@ class MaterialCreateIn(BaseModel):
     unit: str = "m2"
     currency: str = "EUR"
     properties: dict | None = None
+    evidence_category: str = "manufactured_product"
 
 
 @router.post("/materials", response_model=MaterialOut, status_code=201)
 def create_material(body: MaterialCreateIn, db: Db):
-    has_datasheet = bool(body.datasheet_url)
-    has_supplier  = bool(body.supplier_url or body.supplier_name)
-    has_lambda    = body.lambda_W_mK is not None and body.lambda_W_mK > 0
-    has_mfr       = bool(body.manufacturer)
-    if has_datasheet and has_lambda and has_mfr and has_supplier:
-        status = "verified"
-    elif has_datasheet or has_supplier:
-        status = "partial"
-    else:
-        status = "missing"
-
     mat = MaterialLibrary(
         library_version_id = 1,
         name               = body.name,
@@ -418,9 +430,10 @@ def create_material(body: MaterialCreateIn, db: Db):
         dop_url            = body.dop_url,
         unit               = body.unit,
         currency           = body.currency,
-        evidence_status    = status,
+        evidence_category  = body.evidence_category,
         properties         = body.properties or {},
     )
+    mat.evidence_status = _auto_evidence_status(mat)
     db.add(mat)
     db.commit()
     db.refresh(mat)

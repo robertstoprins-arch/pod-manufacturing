@@ -197,6 +197,7 @@ function EvidenceModal({ mat, onClose, onSaved }) {
     price_checked_at:         mat.price_checked_at         ?? '',
     evidence_notes:           mat.evidence_notes           ?? '',
     evidence_status_override: '',  // empty = auto-compute
+    evidence_category:        mat.evidence_category        ?? 'manufactured_product',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
@@ -248,6 +249,17 @@ function EvidenceModal({ mat, onClose, onSaved }) {
         <Field label="Price checked date" value={form.price_checked_at} onChange={v => set('price_checked_at', v)} type="date" />
       </div>
       <Field label="Price source URL"    value={form.price_source_url} onChange={v => set('price_source_url', v)} placeholder="https://…" />
+      <div>
+        <label className="block text-[11px] font-medium text-gray-500 mb-1">Evidence category</label>
+        <select value={form.evidence_category} onChange={e => set('evidence_category', e.target.value)}
+          className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500">
+          <option value="manufactured_product">Manufactured product</option>
+          <option value="generic_assembly">Assembly / calculation item</option>
+          <option value="raw_material">Raw / supplier-specified material</option>
+          <option value="provisional_allowance">Provisional allowance</option>
+          <option value="service_item">Service item</option>
+        </select>
+      </div>
       <div>
         <label className="block text-[11px] font-medium text-gray-500 mb-1">Evidence status</label>
         <select value={form.evidence_status_override} onChange={e => set('evidence_status_override', e.target.value)}
@@ -319,13 +331,51 @@ function DeleteConfirm({ mat, onClose, onDeleted }) {
 
 // ── Grouping ───────────────────────────────────────────────────────────────────
 
+const CATEGORY_META = {
+  manufactured_product: {
+    label: 'Manufactured Products',
+    note: 'Datasheet / DoP required where applicable.',
+    order: 1,
+  },
+  raw_material: {
+    label: 'Raw / Supplier-Specified Materials',
+    note: 'Specify by grade or standard — supplier evidence where available.',
+    order: 2,
+  },
+  generic_assembly: {
+    label: 'Assembly / Calculation Items',
+    note: 'Evidence is provided by the component materials, not this row.',
+    order: 3,
+  },
+  provisional_allowance: {
+    label: 'Provisional Allowances',
+    note: 'Final supplier / product to be confirmed.',
+    order: 4,
+  },
+  service_item: {
+    label: 'Service Items',
+    note: 'Labour / process items — no product evidence required.',
+    order: 5,
+  },
+}
+
 function groupMaterials(materials) {
-  const manufactured = materials.filter(m => (m.properties?.material_class ?? 'manufactured') !== 'building')
-  const building     = materials.filter(m => m.properties?.material_class === 'building')
-  return [
-    { id: 'manufactured', label: 'Manufactured Products',      note: 'CE marked — datasheet & DoP required',                items: manufactured },
-    { id: 'building',     label: 'Building & Site Materials',   note: 'Specify by grade / standard — no manufacturer datasheet', items: building },
-  ].filter(g => g.items.length > 0)
+  const byCategory = {}
+  for (const m of materials) {
+    const cat = m.evidence_category || 'manufactured_product'
+    if (!byCategory[cat]) byCategory[cat] = []
+    byCategory[cat].push(m)
+  }
+  return Object.entries(byCategory)
+    .map(([cat, items]) => ({
+      id: cat,
+      label: CATEGORY_META[cat]?.label ?? cat,
+      note: CATEGORY_META[cat]?.note ?? '',
+      order: CATEGORY_META[cat]?.order ?? 99,
+      items,
+    }))
+    .sort((a, b) => a.order - b.order)
+    .filter(g => g.items.length > 0)
 }
 
 function SectionHeader({ label, count, note }) {
@@ -428,9 +478,10 @@ export default function MaterialLibraryPage() {
   )
 
   const summary = {
-    verified: visible.filter(m => m.evidence_status === 'verified').length,
-    partial:  visible.filter(m => m.evidence_status === 'partial').length,
-    missing:  visible.filter(m => m.evidence_status === 'missing').length,
+    verified:    visible.filter(m => m.evidence_status === 'verified').length,
+    partial:     visible.filter(m => m.evidence_status === 'partial').length,
+    provisional: visible.filter(m => m.evidence_status === 'provisional').length,
+    missing:     visible.filter(m => m.evidence_status === 'missing').length,
   }
 
   const groups = groupMaterials(filtered)
@@ -459,6 +510,11 @@ export default function MaterialLibraryPage() {
               <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2.5 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{summary.partial} partial
               </span>
+              {summary.provisional > 0 && (
+                <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />{summary.provisional} provisional
+                </span>
+              )}
               <span className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-2.5 py-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />{summary.missing} missing
               </span>
