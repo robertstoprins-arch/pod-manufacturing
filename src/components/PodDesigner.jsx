@@ -403,34 +403,46 @@ export default function PodDesigner() {
   }
 
   // ── PDF Review Pack ──────────────────────────────────────────────────────────
+  const _fetchPdf = async (endpoint, payload, filename) => {
+    const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+    let res
+    try {
+      res = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    } catch (netErr) {
+      // fetch() itself threw — CORS preflight rejected or server unreachable
+      throw new Error(
+        `Network error — request did not reach the server. ` +
+        `Check CORS settings on Render and that the backend is running. ` +
+        `(${netErr.message})`
+      )
+    }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(errText || `Server error ${res.status}`)
+    }
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const generatePdf = async () => {
     if (!specId) return
     setPdfLoading(true)
     setPdfError(null)
     try {
-      const payload = {
-        project_name: form.name || 'Pod',
-        revision: 'A',
-        packages,
-        pkg_overrides: {},
-      }
-      const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-      const res = await fetch(`${API_BASE}/pod-specs/${specId}/generate-review-pack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(err || `HTTP ${res.status}`)
-      }
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = `review-pack-${(form.name || 'pod').toLowerCase().replace(/\s+/g, '-')}-revA.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      await _fetchPdf(
+        `/pod-specs/${specId}/generate-review-pack`,
+        { project_name: form.name || 'Pod', revision: 'A', packages, pkg_overrides: {} },
+        `review-pack-${(form.name || 'pod').toLowerCase().replace(/\s+/g, '-')}-revA.pdf`
+      )
     } catch (e) {
       setPdfError(e.message)
     } finally {
@@ -443,30 +455,11 @@ export default function PodDesigner() {
     setClientPdfLoading(true)
     setClientPdfError(null)
     try {
-      const payload = {
-        project_name: form.name || 'Pod',
-        revision: 'A',
-        packages,
-        pkg_overrides: {},
-        customer_name: '',
-      }
-      const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-      const res = await fetch(`${API_BASE}/pod-specs/${specId}/generate-client-quote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(err || `HTTP ${res.status}`)
-      }
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = `pod-client-quote-${(form.name || 'pod').toLowerCase().replace(/\s+/g, '-')}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      await _fetchPdf(
+        `/pod-specs/${specId}/generate-client-quote`,
+        { project_name: form.name || 'Pod', revision: 'A', packages, pkg_overrides: {}, customer_name: '' },
+        `pod-client-quote-${(form.name || 'pod').toLowerCase().replace(/\s+/g, '-')}.pdf`
+      )
     } catch (e) {
       setClientPdfError(e.message)
     } finally {
