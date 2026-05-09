@@ -747,71 +747,53 @@ def generate_review_pack(spec_id: int, body: ReviewPackIn, db: Db):
     spec = db.get(PodSpec, spec_id)
     if spec is None:
         raise HTTPException(status_code=404, detail="Pod spec not found.")
-
-    from app.skills.pdf_review_pack import ReviewPackData, ReviewPackPDF, _resolve_buildup
-    from app.models import MaterialLibrary, AccountSettings
-    from app.api.settings import _get_or_create as _get_settings, compute_selling_price
-
-    # Resolve build-ups
-    wall_bu  = _resolve_buildup(db.get(BuildUp, spec.wall_build_up_id),  db) if spec.wall_build_up_id  else None
-    floor_bu = _resolve_buildup(db.get(BuildUp, spec.floor_build_up_id), db) if spec.floor_build_up_id else None
-    roof_bu  = _resolve_buildup(db.get(BuildUp, spec.roof_build_up_id),  db) if spec.roof_build_up_id  else None
-
-    # BOM — reuse existing get_pod_spec_bom logic by calling it directly
-    bom = get_pod_spec_bom(spec_id, db)
-    bom_lines = [l.model_dump() for l in bom.lines]
-
-    # Materials
-    materials_orm = db.query(MaterialLibrary).order_by(MaterialLibrary.id).all()
-    from app.api.build_ups import MaterialOut
-    materials = [MaterialOut.model_validate(m).model_dump() for m in materials_orm]
-
-    # Provisional allowances
-    allowances_orm = db.query(ProvisionalAllowance).all()
-    allowances = [
-        {"code": a.code, "name": a.name, "default_unit_rate": a.default_unit_rate,
-         "currency": a.currency, "phase": a.cost_phase}
-        for a in allowances_orm
-    ]
-
-    # Load account settings for markup / selling price calculation
-    acc = _get_settings(db)
-    markup_pct = body.markup_percent if body.markup_percent is not None else acc.default_markup_percent
-    vat_pct    = body.vat_rate_percent if body.vat_rate_percent is not None else acc.vat_rate_percent
-    rtn        = body.round_to_nearest if body.round_to_nearest is not None else acc.round_to_nearest
-
-    data = ReviewPackData(
-        spec_id=spec_id,
-        spec_name=spec.name,
-        revision=body.revision or "A",
-        project_name=body.project_name or spec.name,
-        generated_at=datetime.now(timezone.utc),
-        geometry=spec.geometry,
-        wall_bu=wall_bu,
-        floor_bu=floor_bu,
-        roof_bu=roof_bu,
-        bom_lines=bom_lines,
-        bom_areas=bom.areas,
-        bom_opening_counts=bom.opening_counts,
-        bom_total=bom.total_cost,
-        materials=materials,
-        allowances=allowances,
-        packages=body.packages,
-        pkg_overrides=body.pkg_overrides,
-        markup_percent=markup_pct,
-        vat_rate_percent=vat_pct,
-        round_to_nearest=rtn,
-    )
-
     try:
+        from app.skills.pdf_review_pack import ReviewPackData, ReviewPackPDF, _resolve_buildup
+        from app.api.settings import _get_or_create as _get_settings
+
+        wall_bu  = _resolve_buildup(db.get(BuildUp, spec.wall_build_up_id),  db) if spec.wall_build_up_id  else None
+        floor_bu = _resolve_buildup(db.get(BuildUp, spec.floor_build_up_id), db) if spec.floor_build_up_id else None
+        roof_bu  = _resolve_buildup(db.get(BuildUp, spec.roof_build_up_id),  db) if spec.roof_build_up_id  else None
+
+        bom = get_pod_spec_bom(spec_id, db)
+
+        materials_orm = db.query(MaterialLibrary).order_by(MaterialLibrary.id).all()
+        from app.api.build_ups import MaterialOut
+        materials = [MaterialOut.model_validate(m).model_dump() for m in materials_orm]
+
+        allowances_orm = db.query(ProvisionalAllowance).all()
+        allowances = [
+            {"code": a.code, "name": a.name, "default_unit_rate": a.default_unit_rate,
+             "currency": a.currency, "phase": a.cost_phase}
+            for a in allowances_orm
+        ]
+
+        acc = _get_settings(db)
+        markup_pct = body.markup_percent if body.markup_percent is not None else acc.default_markup_percent
+        vat_pct    = body.vat_rate_percent if body.vat_rate_percent is not None else acc.vat_rate_percent
+        rtn        = body.round_to_nearest if body.round_to_nearest is not None else acc.round_to_nearest
+
+        data = ReviewPackData(
+            spec_id=spec_id, spec_name=spec.name,
+            revision=body.revision or "A", project_name=body.project_name or spec.name,
+            generated_at=datetime.now(timezone.utc), geometry=spec.geometry or {},
+            wall_bu=wall_bu, floor_bu=floor_bu, roof_bu=roof_bu,
+            bom_lines=[l.model_dump() for l in bom.lines],
+            bom_areas=bom.areas, bom_opening_counts=bom.opening_counts, bom_total=bom.total_cost,
+            materials=materials, allowances=allowances,
+            packages=body.packages, pkg_overrides=body.pkg_overrides,
+            markup_percent=markup_pct, vat_rate_percent=vat_pct, round_to_nearest=rtn,
+        )
         pdf_bytes = ReviewPackPDF(data).generate()
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.error("ReviewPackPDF failed for spec %s: %s\n%s", spec_id, exc, traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"PDF generation error: {exc}")
+        logger.error("generate_review_pack failed spec=%s: %s\n%s", spec_id, exc, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
+
     filename = f"pod-internal-technical-pack-{spec.name.lower().replace(' ', '-')}-rev{body.revision}.pdf"
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
+        content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -834,58 +816,44 @@ def generate_client_quote(spec_id: int, body: ClientQuoteIn, db: Db):
     spec = db.get(PodSpec, spec_id)
     if spec is None:
         raise HTTPException(status_code=404, detail="Pod spec not found.")
-
-    from app.skills.pdf_review_pack import ReviewPackData, _resolve_buildup
-    from app.skills.pdf_client_quote import ClientQuotePDF
-    from app.models import MaterialLibrary, AccountSettings
-    from app.api.settings import _get_or_create as _get_settings
-
-    wall_bu  = _resolve_buildup(db.get(BuildUp, spec.wall_build_up_id),  db) if spec.wall_build_up_id  else None
-    floor_bu = _resolve_buildup(db.get(BuildUp, spec.floor_build_up_id), db) if spec.floor_build_up_id else None
-    roof_bu  = _resolve_buildup(db.get(BuildUp, spec.roof_build_up_id),  db) if spec.roof_build_up_id  else None
-
-    bom = get_pod_spec_bom(spec_id, db)
-
-    acc = _get_settings(db)
-    markup_pct = body.markup_percent if body.markup_percent is not None else acc.default_markup_percent
-    vat_pct    = body.vat_rate_percent if body.vat_rate_percent is not None else acc.vat_rate_percent
-    rtn        = body.round_to_nearest if body.round_to_nearest is not None else acc.round_to_nearest
-
-    # Resolve finish catalogue selections
-    finish_cost_data = get_finish_cost(spec_id, db)
-    finish_lines = finish_cost_data.get("lines", []) if isinstance(finish_cost_data, dict) else []
-    finish_total = finish_cost_data.get("total") or 0.0 if isinstance(finish_cost_data, dict) else 0.0
-
-    data = ReviewPackData(
-        spec_id=spec_id,
-        spec_name=spec.name,
-        revision=body.revision or "A",
-        project_name=body.project_name or spec.name,
-        generated_at=datetime.now(timezone.utc),
-        geometry=spec.geometry,
-        wall_bu=wall_bu,
-        floor_bu=floor_bu,
-        roof_bu=roof_bu,
-        bom_lines=[l.model_dump() for l in bom.lines],
-        bom_areas=bom.areas,
-        bom_opening_counts=bom.opening_counts,
-        bom_total=bom.total_cost,
-        materials=[],
-        allowances=[],
-        packages=body.packages,
-        pkg_overrides=body.pkg_overrides,
-        finish_lines=finish_lines,
-        finish_total=finish_total,
-        markup_percent=markup_pct,
-        vat_rate_percent=vat_pct,
-        round_to_nearest=rtn,
-    )
-
     try:
+        from app.skills.pdf_review_pack import ReviewPackData, _resolve_buildup
+        from app.skills.pdf_client_quote import ClientQuotePDF
+        from app.api.settings import _get_or_create as _get_settings
+
+        wall_bu  = _resolve_buildup(db.get(BuildUp, spec.wall_build_up_id),  db) if spec.wall_build_up_id  else None
+        floor_bu = _resolve_buildup(db.get(BuildUp, spec.floor_build_up_id), db) if spec.floor_build_up_id else None
+        roof_bu  = _resolve_buildup(db.get(BuildUp, spec.roof_build_up_id),  db) if spec.roof_build_up_id  else None
+
+        bom = get_pod_spec_bom(spec_id, db)
+
+        acc = _get_settings(db)
+        markup_pct = body.markup_percent if body.markup_percent is not None else acc.default_markup_percent
+        vat_pct    = body.vat_rate_percent if body.vat_rate_percent is not None else acc.vat_rate_percent
+        rtn        = body.round_to_nearest if body.round_to_nearest is not None else acc.round_to_nearest
+
+        finish_cost_data = get_finish_cost(spec_id, db)
+        finish_lines = finish_cost_data.get("lines", []) if isinstance(finish_cost_data, dict) else []
+        finish_total = finish_cost_data.get("total") or 0.0 if isinstance(finish_cost_data, dict) else 0.0
+
+        data = ReviewPackData(
+            spec_id=spec_id, spec_name=spec.name,
+            revision=body.revision or "A", project_name=body.project_name or spec.name,
+            generated_at=datetime.now(timezone.utc), geometry=spec.geometry or {},
+            wall_bu=wall_bu, floor_bu=floor_bu, roof_bu=roof_bu,
+            bom_lines=[l.model_dump() for l in bom.lines],
+            bom_areas=bom.areas, bom_opening_counts=bom.opening_counts, bom_total=bom.total_cost,
+            materials=[], allowances=[],
+            packages=body.packages, pkg_overrides=body.pkg_overrides,
+            finish_lines=finish_lines, finish_total=finish_total,
+            markup_percent=markup_pct, vat_rate_percent=vat_pct, round_to_nearest=rtn,
+        )
         pdf_bytes = ClientQuotePDF(data, customer_name=body.customer_name).generate()
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.error("ClientQuotePDF failed for spec %s: %s\n%s", spec_id, exc, traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"PDF generation error: {exc}")
+        logger.error("generate_client_quote failed spec=%s: %s\n%s", spec_id, exc, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
     slug = (body.customer_name or spec.name).lower().replace(" ", "-")
     filename = f"pod-client-quote-{slug}.pdf"
     return Response(
