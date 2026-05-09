@@ -1,6 +1,30 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
+
+
+def _run_migrations():
+    """Run alembic upgrade head at startup so new tables are always present."""
+    try:
+        from alembic.config import Config
+        from alembic import command
+        # alembic.ini lives one directory above this package (in backend/)
+        backend_dir = os.path.dirname(os.path.dirname(__file__))
+        cfg = Config(os.path.join(backend_dir, "alembic.ini"))
+        command.upgrade(cfg, "head")
+        logger.info("Alembic migrations applied.")
+    except Exception as exc:
+        logger.warning("Alembic migration skipped or failed: %s", exc)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    _run_migrations()
+    yield
 from app.api.health import router as health_router
 from app.api.pods import router as pods_router
 from app.api.drawings import router as drawings_router
@@ -17,6 +41,7 @@ app = FastAPI(
     title="Pod Manufacturing API",
     version="0.1.0",
     description="Parametric pod manufacturing — compliance, production packs, IFC export.",
+    lifespan=lifespan,
 )
 
 _origins_env = os.environ.get(
