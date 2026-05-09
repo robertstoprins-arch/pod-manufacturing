@@ -19,14 +19,21 @@ app = FastAPI(
     description="Parametric pod manufacturing — compliance, production packs, IFC export.",
 )
 
-_origins = os.environ.get(
+_origins_env = os.environ.get(
     "CORS_ORIGINS",
     "http://localhost:5173,http://localhost:5174,http://localhost:4173",
-).split(",")
+)
+_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+
+# Also allow all Vercel preview deployments for this project
+_origin_regex = (
+    r"https://pod-manufacturing(-[a-z0-9]+)*(-robertstoprins-7454s-projects)?\.vercel\.app"
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
