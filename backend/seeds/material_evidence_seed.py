@@ -384,7 +384,10 @@ def run(force: bool = False) -> None:
                     setattr(mat, field, val)
                     changed = True
 
-            _set("evidence_category", ev.get("evidence_category"))
+            # Always apply category from seed (default "manufactured_product" in DB is not user-set)
+            if ev.get("evidence_category"):
+                mat.evidence_category = ev["evidence_category"]
+                changed = True
             _set("manufacturer",      ev.get("manufacturer"))
             _set("supplier_name",     ev.get("supplier_name"))
             _set("supplier_url",      ev.get("supplier_url"))
