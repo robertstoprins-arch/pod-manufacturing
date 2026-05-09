@@ -983,19 +983,19 @@ def manufacture_plan_svg(
                     f'stroke="{_DIM}" stroke-width="0.7" stroke-dasharray="4,3" fill="none"/>'
                 )
 
-            # Tag badge + size label — placed INSIDE the pod footprint
-            # W wall (left_of_plan=True): interior is to the right → offset inward from E face of W wall
-            # E wall (left_of_plan=False): interior is to the left → offset inward from W face of E wall
-            tag_ofs = 46
-            if left_of_plan:
-                tx = wall_x + WT + tag_ofs
-                lbl_x = tx + 26
-            else:
-                tx = wall_x - tag_ofs
-                lbl_x = tx - 26
-            parts.append(_mfr_tag(tx, ry + ow_px/2, tag))
+            # Tag badge + size label — vertical stack, placed INSIDE the pod footprint.
+            # For E/W walls the opening is tall and the size text is long; stacking
+            # vertically (tag above, size below) prevents horizontal crowding.
+            # W wall (left_of_plan=True): offset rightward from interior face of W wall
+            # E wall (left_of_plan=False): offset leftward from interior face of E wall
+            tag_ofs = 52          # px inward from interior wall face
+            ann_cx = (wall_x + WT + tag_ofs) if left_of_plan else (wall_x - tag_ofs)
+            ann_cy = ry + ow_px / 2   # vertically centred on opening
             size_lbl = f"{int(o['width_m']*1000)} × {int(o['height_m']*1000)}"
-            parts.append(_t(lbl_x, ry + ow_px/2 + 4, size_lbl, _DS_FONT - 4, "middle", _OPEN_LINE))
+            # Tag badge centred on ann_cx / ann_cy
+            parts.append(_mfr_tag(ann_cx, ann_cy - 10, tag))
+            # Size text directly below badge — "middle" anchor so it centres on ann_cx
+            parts.append(_t(ann_cx, ann_cy + 16, size_lbl, _DS_FONT - 4, "middle", _OPEN_LINE))
 
             parts.append(_vdim(ry, ry + ow_px, wall_x if left_of_plan else wall_x + WT,
                                f"{int(o['width_m']*1000)}", left_of_plan, level=0))
