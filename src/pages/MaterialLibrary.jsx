@@ -4,9 +4,10 @@ import { apiFetch } from '../api/client'
 // ── Evidence badge ─────────────────────────────────────────────────────────────
 
 const EVIDENCE_CFG = {
-  verified: { dot: 'bg-green-500', cls: 'bg-green-50 text-green-700 border-green-200',  label: 'Verified' },
-  partial:  { dot: 'bg-amber-400', cls: 'bg-amber-50 text-amber-700 border-amber-200',  label: 'Partial'  },
-  missing:  { dot: 'bg-gray-300',  cls: 'bg-gray-100 text-gray-500 border-gray-200',    label: 'Missing'  },
+  verified:    { dot: 'bg-green-500',  cls: 'bg-green-50 text-green-700 border-green-200',   label: 'Verified'    },
+  partial:     { dot: 'bg-amber-400',  cls: 'bg-amber-50 text-amber-700 border-amber-200',   label: 'Partial'     },
+  provisional: { dot: 'bg-blue-400',   cls: 'bg-blue-50 text-blue-700 border-blue-200',      label: 'Provisional' },
+  missing:     { dot: 'bg-gray-300',   cls: 'bg-gray-100 text-gray-500 border-gray-200',     label: 'Missing'     },
 }
 
 function EvidenceBadge({ status }) {
@@ -175,17 +176,27 @@ function AddMaterialModal({ onClose, onAdded }) {
 
 // ── Edit evidence modal ────────────────────────────────────────────────────────
 
+const EVIDENCE_STATUS_OPTIONS = [
+  { value: '',            label: 'Auto-compute from fields' },
+  { value: 'verified',    label: 'Verified — supplier + datasheet confirmed' },
+  { value: 'partial',     label: 'Partial — some evidence missing' },
+  { value: 'provisional', label: 'Provisional — allowance / not yet selected' },
+  { value: 'missing',     label: 'Missing — no evidence available' },
+]
+
 function EvidenceModal({ mat, onClose, onSaved }) {
   const [form, setForm] = useState({
-    manufacturer:     mat.manufacturer     ?? '',
-    supplier_name:    mat.supplier_name    ?? '',
-    supplier_url:     mat.supplier_url     ?? '',
-    datasheet_url:    mat.datasheet_url    ?? '',
-    dop_url:          mat.dop_url          ?? '',
-    fire_euroclass:   mat.fire_euroclass   ?? '',
-    density_kg_m3:    mat.density_kg_m3    ?? '',
-    price_source_url: mat.price_source_url ?? '',
-    price_checked_at: mat.price_checked_at ?? '',
+    manufacturer:             mat.manufacturer             ?? '',
+    supplier_name:            mat.supplier_name            ?? '',
+    supplier_url:             mat.supplier_url             ?? '',
+    datasheet_url:            mat.datasheet_url            ?? '',
+    dop_url:                  mat.dop_url                  ?? '',
+    fire_euroclass:           mat.fire_euroclass           ?? '',
+    density_kg_m3:            mat.density_kg_m3            ?? '',
+    price_source_url:         mat.price_source_url         ?? '',
+    price_checked_at:         mat.price_checked_at         ?? '',
+    evidence_notes:           mat.evidence_notes           ?? '',
+    evidence_status_override: '',  // empty = auto-compute
   })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
@@ -237,6 +248,24 @@ function EvidenceModal({ mat, onClose, onSaved }) {
         <Field label="Price checked date" value={form.price_checked_at} onChange={v => set('price_checked_at', v)} type="date" />
       </div>
       <Field label="Price source URL"    value={form.price_source_url} onChange={v => set('price_source_url', v)} placeholder="https://…" />
+      <div>
+        <label className="block text-[11px] font-medium text-gray-500 mb-1">Evidence status</label>
+        <select value={form.evidence_status_override} onChange={e => set('evidence_status_override', e.target.value)}
+          className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500">
+          {EVIDENCE_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <p className="text-[10px] text-gray-400 mt-1">Current: <span className="font-medium">{mat.evidence_status}</span></p>
+      </div>
+      <div>
+        <label className="block text-[11px] font-medium text-gray-500 mb-1">Evidence notes</label>
+        <textarea
+          value={form.evidence_notes}
+          onChange={e => set('evidence_notes', e.target.value)}
+          rows={2}
+          placeholder="Optional internal notes about this material's evidence…"
+          className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500 resize-none"
+        />
+      </div>
       {error && (
         <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
       )}

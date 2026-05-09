@@ -52,6 +52,7 @@ class MaterialOut(BaseModel):
     price_source_url: str | None
     price_checked_at: date | None
     evidence_status: str
+    evidence_notes: str | None
     lambda_W_mK: float | None
     density_kg_m3: float | None
     fire_euroclass: str | None
@@ -61,6 +62,8 @@ class MaterialOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+VALID_EVIDENCE_STATUSES = {"verified", "partial", "missing", "provisional"}
 
 class EvidenceIn(BaseModel):
     manufacturer: str | None = None
@@ -72,6 +75,8 @@ class EvidenceIn(BaseModel):
     density_kg_m3: float | None = None
     price_source_url: str | None = None
     price_checked_at: str | None = None  # ISO date "YYYY-MM-DD"
+    evidence_notes: str | None = None
+    evidence_status_override: str | None = None  # manual override; None = auto-compute
 
 
 class LayerIn(BaseModel):
@@ -343,18 +348,25 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
             mat.price_checked_at = date.fromisoformat(body.price_checked_at)
         except ValueError:
             pass
+    if body.evidence_notes is not None:
+        mat.evidence_notes = body.evidence_notes or None
 
-    # Recompute evidence_status automatically
-    has_datasheet  = bool(mat.datasheet_url)
-    has_supplier   = bool(mat.supplier_url or mat.supplier_name)
-    has_lambda     = mat.lambda_W_mK is not None and mat.lambda_W_mK > 0
-    has_mfr        = bool(mat.manufacturer)
-    if has_datasheet and has_lambda and has_mfr and has_supplier:
-        mat.evidence_status = "verified"
-    elif has_datasheet or has_supplier:
-        mat.evidence_status = "partial"
+    # Evidence status: manual override takes precedence over auto-compute
+    if body.evidence_status_override is not None:
+        override = body.evidence_status_override.lower()
+        if override in VALID_EVIDENCE_STATUSES:
+            mat.evidence_status = override
     else:
-        mat.evidence_status = "missing"
+        has_datasheet  = bool(mat.datasheet_url)
+        has_supplier   = bool(mat.supplier_url or mat.supplier_name)
+        has_lambda     = mat.lambda_W_mK is not None and mat.lambda_W_mK > 0
+        has_mfr        = bool(mat.manufacturer)
+        if has_datasheet and has_lambda and has_mfr and has_supplier:
+            mat.evidence_status = "verified"
+        elif has_datasheet or has_supplier:
+            mat.evidence_status = "partial"
+        else:
+            mat.evidence_status = "missing"
 
     db.commit()
     db.refresh(mat)

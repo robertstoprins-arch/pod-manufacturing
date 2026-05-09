@@ -109,6 +109,7 @@ class MaterialLibrary(Base):
     price_source_url = Column(Text)
     price_checked_at = Column(Date)
     evidence_status  = Column(String(20), default="missing", nullable=False)
+    evidence_notes   = Column(Text)
 
     # Extra metadata: default_role, default_thickness_mm, include_in_u_value, sd_value_m, category
     properties = Column(JSON)

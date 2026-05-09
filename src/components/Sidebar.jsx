@@ -55,6 +55,13 @@ function Icon({ id }) {
         <path d="M7.5 8h1.5M9 5h.5M9 11h.5" strokeLinecap="round" />
       </>
     ),
+    settings: (
+      <>
+        <circle cx="8" cy="8" r="2.5" />
+        <path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1" strokeLinecap="round" />
+        <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+      </>
+    ),
   }
   return (
     <svg
@@ -81,6 +88,7 @@ const nav = [
   { id: 'production',       label: 'Production' },
   { id: 'inventory',        label: 'Inventory' },
   { id: 'schedule',         label: 'Schedule' },
+  { id: 'settings',         label: 'Settings' },
 ]
 
 export default function Sidebar({ page, setPage }) {

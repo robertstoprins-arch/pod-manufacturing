@@ -107,6 +107,10 @@ class BomLineOut(BaseModel):
     price_per_unit: float | None = None
     currency: str | None = None
     line_cost: float | None = None  # order_quantity × price_per_unit
+    evidence_status: str | None = None
+    supplier_name: str | None = None
+    datasheet_url: str | None = None
+    dop_url: str | None = None
 
 
 class BomOut(BaseModel):
@@ -575,6 +579,27 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                         f"({line_supplier_ref or 'no ref'}, unit: {mto.unit}) — line cost excluded"
                     )
 
+                # Evidence warnings (skip framing sub-lines — they share the parent material)
+                if mto.role not in ("framing_zone_timber", "framing_zone_insulation"):
+                    ev = price_mat.evidence_status
+                    if ev in ("missing", None):
+                        bom_warnings.append(
+                            f"Evidence missing: {mto.material_name} — supplier, datasheet and DoP not confirmed."
+                        )
+                    elif ev == "provisional":
+                        bom_warnings.append(
+                            f"Provisional: {mto.material_name} — product not yet selected, using allowance."
+                        )
+                    elif ev == "partial":
+                        if not price_mat.datasheet_url:
+                            bom_warnings.append(
+                                f"Partial evidence: {mto.material_name} — datasheet URL missing."
+                            )
+                        if not price_mat.dop_url and price_mat.fire_euroclass:
+                            bom_warnings.append(
+                                f"Partial evidence: {mto.material_name} — DoP missing (fire-classified material)."
+                            )
+
                 lines.append(BomLineOut(
                     element_type=element_type,
                     build_up_name=bu.name,
@@ -593,6 +618,10 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                     price_per_unit=price_per_unit,
                     currency=currency,
                     line_cost=line_cost,
+                    evidence_status=price_mat.evidence_status,
+                    supplier_name=price_mat.supplier_name,
+                    datasheet_url=price_mat.datasheet_url,
+                    dop_url=price_mat.dop_url,
                 ))
 
     # ── Opening counts (for BomOut summary field) ─────────────────────────────

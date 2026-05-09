@@ -10,6 +10,7 @@ import Schedule from './components/Schedule'
 import BuildUpEditor from './pages/BuildUpEditor'
 import MaterialLibraryPage from './pages/MaterialLibrary'
 import FinishCataloguePage from './pages/FinishCatalogue'
+import SettingsPage from './pages/Settings'
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
@@ -24,6 +25,7 @@ export default function App() {
     production:       <Production />,
     inventory:        <Inventory />,
     schedule:         <Schedule />,
+    settings:         <SettingsPage />,
   }
 
   return (
