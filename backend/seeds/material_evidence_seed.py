@@ -42,13 +42,13 @@ EVIDENCE: list[dict] = [
         "manufacturer": "Saint-Gobain / British Gypsum",
         "supplier_name": "British Gypsum",
         "supplier_url": "https://www.british-gypsum.com/products/board-products/gyproc-wallboard-12-5mm",
-        "datasheet_url": None,   # british-gypsum.com blocks automated access (Cloudflare) — add PDF URL manually
-        "dop_url": None,         # DoP available under CE Marking section on site — add manually
+        "datasheet_url": "https://www.british-gypsum.com/documents/product-data-sheet-pds/british-gypsum-pds-gyproc-wallboard-12-5mm.pdf",
+        "dop_url": None,         # DoP not publicly indexed — add manually from british-gypsum.com CE Marking section
         "evidence_status": "partial",
         "evidence_notes": (
             "Saint-Gobain / British Gypsum Gyproc WallBoard 12.5mm. EN 520 standard plasterboard. "
-            "Product page confirmed. TDS and DoP available on british-gypsum.com under Downloads / CE Marking — "
-            "add direct PDF URLs manually (site blocks automated retrieval)."
+            "Product page and PDS confirmed. DoP available on british-gypsum.com under CE Marking — "
+            "add direct DoP PDF URL manually."
         ),
     },
 
@@ -73,13 +73,13 @@ EVIDENCE: list[dict] = [
         "manufacturer": "Kronospan",
         "supplier_name": "Kronospan",
         "supplier_url": "https://kronospan.com/en_EN/products/view/kronobuild/osb/osb-3/osb-3-699/",
-        "datasheet_url": None,   # Kronospan downloads are served via JS app — no stable direct PDF URL
-        "dop_url": None,         # DoP not publicly accessible via direct URL — add manually if obtained
+        "datasheet_url": None,   # Kronospan downloads served via JS app — no stable direct PDF URL
+        "dop_url": "https://kronospan.com/en_IE/ajax/express_services/download/?args%5B0%5D=express-services&args%5B1%5D=downloads&args%5B2%5D=United-Kingdom&args%5B3%5D=declaration-of-performance&args%5B4%5D=dop-osb-3-mogliev.pdf",
         "evidence_status": "partial",
         "evidence_notes": (
-            "OSB/3 sheathing board to EN 300. Kronospan OSB 3. Product page confirmed. "
-            "DoP and TDS are served via Kronospan's JS download portal — no stable direct PDF URL available. "
-            "Download DoP from site manually and add URL if a stable link is found."
+            "OSB/3 sheathing board to EN 300. Kronospan OSB 3. Product page and DoP confirmed. "
+            "TDS served via Kronospan's JS download portal — no stable direct PDF URL available. "
+            "DoP URL is Kronospan's UK download endpoint — verify it resolves before sharing with client."
         ),
     },
 
@@ -184,48 +184,50 @@ EVIDENCE: list[dict] = [
     {
         "supplier_ref": "GENERIC-MW-ROOF-300",
         "evidence_category": "manufactured_product",
-        "manufacturer": None,    # PAROC / Knauf / ISOVER — not yet selected
-        "supplier_name": None,
-        "supplier_url": None,
-        "datasheet_url": None,
-        "dop_url": None,
-        "evidence_status": None,   # auto: missing — no manufacturer selected yet
+        "manufacturer": "Rockwool",
+        "supplier_name": "Rockwool",
+        "supplier_url": "https://www.rockwool.com/uk/products-and-applications/product-overview/slab-products/rwa45-en-gb/",
+        "datasheet_url": "https://www.rockwool.com/syssiteassets/rw-uk/downloads/datasheets/rw-slabs.pdf",
+        "dop_url": "https://www.rockwool.com/uk/legal-notice/declaration-of-performance/",
+        "evidence_status": "partial",
         "evidence_notes": (
-            "Mineral wool roof insulation. 300mm. "
-            "Possible suppliers: PAROC, Knauf, ISOVER. "
-            "Do not mark partial/verified until exact product is selected."
+            "Rockwool RW Slabs / RWA45 stone wool insulation for pitched roof. 300mm. "
+            "Euroclass A1 non-combustible. λ = 0.034–0.045 W/mK depending on grade. "
+            "Product page and TDS confirmed from rockwool.com/uk. "
+            "DoP URL links to Rockwool's DoP finder portal — search by product name 'RW Slabs' or DoP number on packaging."
         ),
     },
 
     {
         "supplier_ref": "GENERIC-MW-FRAMING-140",
         "evidence_category": "manufactured_product",
-        "manufacturer": None,
-        "supplier_name": None,
-        "supplier_url": None,
-        "datasheet_url": None,
-        "dop_url": None,
-        "evidence_status": None,   # auto: missing
+        "manufacturer": "Rockwool",
+        "supplier_name": "Rockwool",
+        "supplier_url": "https://www.rockwool.com/uk/products/flexi/",
+        "datasheet_url": "https://www.rockwool.com/syssiteassets/rw-uk/downloads/datasheets/rw-slabs.pdf",
+        "dop_url": "https://www.rockwool.com/uk/legal-notice/declaration-of-performance/",
+        "evidence_status": "partial",
         "evidence_notes": (
-            "Mineral wool infill insulation for framing zone. 140mm. "
-            "Possible suppliers: PAROC, Knauf, ISOVER semi-rigid batts. "
-            "Update when exact product and supplier are confirmed."
+            "Rockwool Flexi stone wool insulation for C24 framing zone. 140mm. "
+            "Flexible edge for tight friction-fit between studs. Euroclass A1. "
+            "Product page confirmed from rockwool.com/uk. "
+            "DoP URL links to Rockwool's DoP finder portal — search by product name 'Flexi'."
         ),
     },
 
     {
         "supplier_ref": "GENERIC-VCL-STANDARD",
         "evidence_category": "manufactured_product",
-        "manufacturer": None,
-        "supplier_name": None,
-        "supplier_url": None,
-        "datasheet_url": None,
-        "dop_url": None,
-        "evidence_status": None,   # auto: missing
+        "manufacturer": "Visqueen",
+        "supplier_name": "Visqueen",
+        "supplier_url": "https://visqueen.com/products/vapour-barrier",
+        "datasheet_url": "https://www.resapol.com/wp-content/uploads/2021/12/Visqueen_Vapour_Barrier_datasheet-tds.pdf",
+        "dop_url": None,   # CE DoP not required for polythene VCL — not a CE-marked product
+        "evidence_status": "partial",
         "evidence_notes": (
-            "Standard 0.2mm polythene vapour control layer. "
-            "Generic commodity product — no specific manufacturer datasheet required. "
-            "sd ≈ 50 m. Review if a specific branded product is selected."
+            "Visqueen Vapour Barrier polyethylene vapour control layer. 250 micron (0.25mm). "
+            "BBA approved. Install to warm side of insulation. sd ≈ 50 m. "
+            "Product page and TDS confirmed. No CE DoP required for this product type."
         ),
     },
 
