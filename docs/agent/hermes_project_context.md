@@ -57,10 +57,10 @@ Auto-deploy: git push to main → Vercel and Render deploy automatically.
 
 | Status | Count | Notes |
 |---|---|---|
-| Verified | 7 | Tyvek, Finnfoam PIR x3, Tenapors EPS, Cedral Lap, Intello Plus |
-| Partial | 5 | Gyproc (PDS confirmed, DoP manual), OSB/3 (DoP confirmed), Rockwool Roof, Rockwool Flexi, Visqueen VCL |
-| Provisional | 4 | Assembly rows — Service Void, Ventilated Cavity, C24+PIR zone, C24+MW zone |
-| Missing | 4 | C24 timber, concrete slab, timber batten x2 — raw commodity items, low priority |
+| Verified | 7 | Confirmed supplier + datasheet + DoP |
+| Partial | 5 | Some evidence missing (datasheet or DoP) |
+| Provisional | 4 | Assembly/calculation rows — no DoP required |
+| Missing | 4 | No evidence yet — raw commodity items or unselected products |
 
 Evidence seed script: backend/seeds/material_evidence_seed.py
 Run with: python seeds/material_evidence_seed.py --force
