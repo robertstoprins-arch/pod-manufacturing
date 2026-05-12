@@ -380,6 +380,27 @@ class Client(Base):
     quotes = relationship("Quote", back_populates="client")
 
 
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id             = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name           = Column(String(255), nullable=False)
+    contact_name   = Column(String(255))
+    email          = Column(String(255))
+    phone          = Column(String(50))
+    website        = Column(Text)
+    address        = Column(Text)
+    category       = Column(String(100))
+    lead_time_days = Column(Integer)
+    payment_terms  = Column(String(255))
+    delivery_terms = Column(String(255))
+    currency       = Column(String(10), nullable=False, default="EUR")
+    notes          = Column(Text)
+    is_active      = Column(Boolean, nullable=False, default=True)
+    created_at     = Column(DateTime(timezone=True), default=_now)
+    updated_at     = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class Quote(Base):
     __tablename__ = "quotes"
 

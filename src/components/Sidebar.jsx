@@ -30,6 +30,13 @@ function Icon({ id }) {
         <path d="M13 9.5v1.5l1 1" strokeLinecap="round" />
       </>
     ),
+    suppliers: (
+      <>
+        <circle cx="8" cy="5" r="2.5" />
+        <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" strokeLinecap="round" />
+        <path d="M12 2l1.5 1.5L16 1" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
     orders: (
       <>
         <rect x="2.5" y="1.5" width="11" height="13" rx="1" />
@@ -92,6 +99,7 @@ const nav = [
   { id: 'materials',        label: 'Materials' },
   { id: 'finish_catalogue', label: 'Finishes' },
   { id: 'quotes',           label: 'Quotes' },
+  { id: 'suppliers',        label: 'Suppliers' },
   { id: 'orders',           label: 'Orders' },
   { id: 'production',       label: 'Production' },
   { id: 'inventory',        label: 'Inventory' },

@@ -12,6 +12,7 @@ import MaterialLibraryPage from './pages/MaterialLibrary'
 import FinishCataloguePage from './pages/FinishCatalogue'
 import SettingsPage from './pages/Settings'
 import QuotesPage from './pages/Quotes'
+import SuppliersPage from './pages/Suppliers'
 import { apiFetch } from './api/client'
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
     materials:        <MaterialLibraryPage />,
     finish_catalogue: <FinishCataloguePage />,
     quotes:           <QuotesPage />,
+    suppliers:        <SuppliersPage />,
     orders:           <Orders />,
     production:       <Production />,
     inventory:        <Inventory />,
