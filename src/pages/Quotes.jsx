@@ -1,0 +1,478 @@
+import { useState, useEffect } from 'react'
+import { apiFetch } from '../api/client'
+
+// ── Status config ──────────────────────────────────────────────────────────────
+
+const STATUS_CFG = {
+  draft:          { cls: 'bg-gray-100 text-gray-500 border-gray-200',    dot: 'bg-gray-400',   label: 'Draft' },
+  sent:           { cls: 'bg-blue-50 text-blue-700 border-blue-200',     dot: 'bg-blue-500',   label: 'Sent' },
+  follow_up_due:  { cls: 'bg-amber-50 text-amber-700 border-amber-200',  dot: 'bg-amber-400',  label: 'Follow-Up Due' },
+  accepted:       { cls: 'bg-green-50 text-green-700 border-green-200',  dot: 'bg-green-500',  label: 'Accepted' },
+  lost:           { cls: 'bg-red-50 text-red-600 border-red-200',        dot: 'bg-red-400',    label: 'Lost' },
+  expired:        { cls: 'bg-orange-50 text-orange-600 border-orange-200', dot: 'bg-orange-400', label: 'Expired' },
+  converted:      { cls: 'bg-teal-50 text-teal-700 border-teal-200',     dot: 'bg-teal-500',   label: 'Converted' },
+}
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CFG[status] ?? STATUS_CFG.draft
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border font-medium ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  )
+}
+
+// ── Shared modal shell ─────────────────────────────────────────────────────────
+
+function Modal({ title, subtitle, onClose, children, footer }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <div className="font-semibold text-gray-900">{title}</div>
+            {subtitle && <div className="text-xs text-gray-400 mt-0.5">{subtitle}</div>}
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-600 text-xl leading-none mt-0.5">✕</button>
+        </div>
+        <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">{children}</div>
+        {footer && <div className="px-6 py-3 border-t border-gray-100 flex justify-end gap-2 shrink-0">{footer}</div>}
+      </div>
+    </div>
+  )
+}
+
+function Field({ label, value, onChange, placeholder = '', type = 'text', textarea = false }) {
+  const cls = 'w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500 transition-colors'
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-gray-500 mb-1">{label}</label>
+      {textarea
+        ? <textarea value={value ?? ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} rows={3} className={cls + ' resize-none'} />
+        : <input type={type} value={value ?? ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} className={cls} />
+      }
+    </div>
+  )
+}
+
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-gray-500 mb-1">{label}</label>
+      <select value={value ?? ''} onChange={e => onChange(e.target.value)}
+        className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500">
+        <option value="">— None —</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function Btn({ onClick, children, variant = 'primary', disabled = false }) {
+  const base = 'px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40'
+  const variants = {
+    primary: 'bg-gray-900 text-white hover:bg-gray-700',
+    secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+    danger: 'bg-red-50 text-red-600 hover:bg-red-100',
+    success: 'bg-green-600 text-white hover:bg-green-700',
+  }
+  return <button type="button" className={`${base} ${variants[variant]}`} onClick={onClick} disabled={disabled}>{children}</button>
+}
+
+// ── Summary cards ──────────────────────────────────────────────────────────────
+
+function SummaryCards({ quotes }) {
+  const count = (s) => quotes.filter(q => q.status === s).length
+  const followUp = quotes.filter(q => q.status === 'follow_up_due').length
+  const cards = [
+    { label: 'Draft',          value: count('draft'),     color: 'text-gray-500' },
+    { label: 'Sent',           value: count('sent'),      color: 'text-blue-600' },
+    { label: 'Follow-Up Due',  value: followUp,           color: followUp > 0 ? 'text-amber-600' : 'text-gray-400' },
+    { label: 'Accepted',       value: count('accepted'),  color: 'text-green-600' },
+    { label: 'Lost',           value: count('lost'),      color: 'text-red-500' },
+  ]
+  return (
+    <div className="grid grid-cols-5 gap-3 mb-6">
+      {cards.map(c => (
+        <div key={c.label} className="bg-white rounded-lg border border-gray-100 px-4 py-3">
+          <div className={`text-2xl font-bold ${c.color}`}>{c.value}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">{c.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── New quote form ─────────────────────────────────────────────────────────────
+
+const EMPTY_FORM = {
+  title: '', client_id: '', lead_source: '', currency: 'EUR',
+  total_ex_vat: '', total_inc_vat: '', deposit_percent: '',
+  expires_at: '', notes: '', quote_number: '',
+}
+
+function NewQuoteModal({ onClose, onCreated, clients }) {
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const set = (k) => (v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.title.trim()) { setErr('Title is required'); return }
+    setSaving(true)
+    try {
+      const body = {
+        title: form.title,
+        client_id: form.client_id || null,
+        quote_number: form.quote_number || null,
+        lead_source: form.lead_source || null,
+        currency: form.currency || 'EUR',
+        total_ex_vat: form.total_ex_vat ? parseFloat(form.total_ex_vat) : null,
+        total_inc_vat: form.total_inc_vat ? parseFloat(form.total_inc_vat) : null,
+        deposit_percent: form.deposit_percent ? parseFloat(form.deposit_percent) : null,
+        expires_at: form.expires_at || null,
+        notes: form.notes || null,
+      }
+      const q = await apiFetch('/quotes', { method: 'POST', body: JSON.stringify(body) })
+      onCreated(q)
+    } catch (e) {
+      setErr(e.message ?? 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const clientOpts = clients.map(c => ({ value: c.id, label: c.name + (c.company_name ? ` — ${c.company_name}` : '') }))
+
+  return (
+    <Modal title="New Quote" onClose={onClose} footer={
+      <>
+        {err && <span className="text-xs text-red-500 mr-auto">{err}</span>}
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Create Quote'}</Btn>
+      </>
+    }>
+      <Field label="Title *" value={form.title} onChange={set('title')} placeholder="e.g. Garden Pod — Smith Residence" />
+      <Field label="Quote Number" value={form.quote_number} onChange={set('quote_number')} placeholder="e.g. Q-2026-001" />
+      <SelectField label="Client" value={form.client_id} onChange={set('client_id')} options={clientOpts} />
+      <Field label="Lead Source" value={form.lead_source} onChange={set('lead_source')} placeholder="Website / referral / etc." />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Total excl. VAT" value={form.total_ex_vat} onChange={set('total_ex_vat')} type="number" placeholder="0.00" />
+        <Field label="Total incl. VAT" value={form.total_inc_vat} onChange={set('total_inc_vat')} type="number" placeholder="0.00" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Currency" value={form.currency} onChange={set('currency')} placeholder="EUR" />
+        <Field label="Deposit %" value={form.deposit_percent} onChange={set('deposit_percent')} type="number" placeholder="30" />
+      </div>
+      <Field label="Expires" value={form.expires_at} onChange={set('expires_at')} type="date" />
+      <Field label="Notes (internal)" value={form.notes} onChange={set('notes')} textarea />
+    </Modal>
+  )
+}
+
+// ── Quote detail panel ─────────────────────────────────────────────────────────
+
+const STATUS_OPTS = [
+  { value: 'draft',         label: 'Draft' },
+  { value: 'sent',          label: 'Sent' },
+  { value: 'follow_up_due', label: 'Follow-Up Due' },
+  { value: 'accepted',      label: 'Accepted' },
+  { value: 'lost',          label: 'Lost' },
+  { value: 'expired',       label: 'Expired' },
+  { value: 'converted',     label: 'Converted' },
+]
+
+function formatDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) {
+  const [quote, setQuote] = useState(initialQuote)
+  const [events, setEvents] = useState([])
+  const [tab, setTab] = useState('details')
+  const [saving, setSaving] = useState(false)
+  const [newStatus, setNewStatus] = useState(initialQuote.status)
+  const [lostReason, setLostReason] = useState(initialQuote.lost_reason ?? '')
+  const [statusNote, setStatusNote] = useState('')
+  const [manualNote, setManualNote] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    apiFetch(`/quotes/${quote.id}/events`).then(setEvents).catch(() => {})
+  }, [quote.id])
+
+  async function handleStatusUpdate() {
+    setSaving(true)
+    setErr('')
+    try {
+      const updated = await apiFetch(`/quotes/${quote.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus, note: statusNote || null, lost_reason: lostReason || null }),
+      })
+      setQuote(updated)
+      onUpdated(updated)
+      const evs = await apiFetch(`/quotes/${quote.id}/events`)
+      setEvents(evs)
+      setStatusNote('')
+    } catch (e) {
+      setErr(e.message ?? 'Update failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleAddNote() {
+    if (!manualNote.trim()) return
+    setSaving(true)
+    try {
+      await apiFetch(`/quotes/${quote.id}/events`, {
+        method: 'POST',
+        body: JSON.stringify({ event_type: 'note', note: manualNote }),
+      })
+      setManualNote('')
+      const evs = await apiFetch(`/quotes/${quote.id}/events`)
+      setEvents(evs)
+    } catch (e) {
+      setErr(e.message ?? 'Failed to add note')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const clientName = clients.find(c => c.id === quote.client_id)?.name ?? quote.client_name ?? '—'
+
+  return (
+    <Modal
+      title={quote.title}
+      subtitle={`${quote.quote_number ?? 'No number'} · ${clientName}`}
+      onClose={onClose}
+    >
+      {/* Tabs */}
+      <div className="flex gap-1 -mt-1 mb-2 border-b border-gray-100 pb-2">
+        {['details', 'status', 'events'].map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-3 py-1 text-xs rounded font-medium capitalize transition-colors ${tab === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'details' && (
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+            <InfoRow label="Status"><StatusBadge status={quote.status} /></InfoRow>
+            <InfoRow label="Revision">{quote.revision}</InfoRow>
+            <InfoRow label="Lead Source">{quote.lead_source ?? '—'}</InfoRow>
+            <InfoRow label="Currency">{quote.currency}</InfoRow>
+            <InfoRow label="Total excl. VAT">{quote.total_ex_vat != null ? `${quote.currency} ${Number(quote.total_ex_vat).toLocaleString()}` : '—'}</InfoRow>
+            <InfoRow label="Total incl. VAT">{quote.total_inc_vat != null ? `${quote.currency} ${Number(quote.total_inc_vat).toLocaleString()}` : '—'}</InfoRow>
+            <InfoRow label="Deposit %">{quote.deposit_percent != null ? `${quote.deposit_percent}%` : '—'}</InfoRow>
+            <InfoRow label="Sent">{formatDate(quote.sent_at)}</InfoRow>
+            <InfoRow label="Follow-Up">{formatDate(quote.follow_up_at)}</InfoRow>
+            <InfoRow label="Expires">{formatDate(quote.expires_at)}</InfoRow>
+            <InfoRow label="Accepted">{formatDate(quote.accepted_at)}</InfoRow>
+            <InfoRow label="Lost">{formatDate(quote.lost_at)}</InfoRow>
+            {quote.lost_reason && <InfoRow label="Lost Reason">{quote.lost_reason}</InfoRow>}
+          </div>
+          {quote.notes && (
+            <div className="mt-2 bg-gray-50 rounded p-3 text-xs text-gray-600 whitespace-pre-wrap">{quote.notes}</div>
+          )}
+        </div>
+      )}
+
+      {tab === 'status' && (
+        <div className="space-y-3">
+          <SelectField label="New Status" value={newStatus} onChange={setNewStatus} options={STATUS_OPTS} />
+          {newStatus === 'lost' && (
+            <Field label="Lost Reason" value={lostReason} onChange={setLostReason} placeholder="Price / timing / competitor / etc." />
+          )}
+          <Field label="Note" value={statusNote} onChange={setStatusNote} textarea placeholder="Optional — what happened?" />
+          {err && <p className="text-xs text-red-500">{err}</p>}
+          <div className="flex justify-end">
+            <Btn onClick={handleStatusUpdate} disabled={saving || newStatus === quote.status}>
+              {saving ? 'Saving…' : 'Update Status'}
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {tab === 'events' && (
+        <div className="space-y-3">
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {events.length === 0 && <p className="text-xs text-gray-400">No events yet.</p>}
+            {[...events].reverse().map(ev => (
+              <div key={ev.id} className="bg-gray-50 rounded p-3">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-xs font-medium text-gray-700 capitalize">{ev.event_type.replace(/_/g, ' ')}</span>
+                  <span className="text-[10px] text-gray-400">{formatDate(ev.created_at)}</span>
+                </div>
+                {(ev.old_status || ev.new_status) && (
+                  <div className="text-[10px] text-gray-400 mb-1">
+                    {ev.old_status && <StatusBadge status={ev.old_status} />}
+                    {ev.old_status && ev.new_status && <span className="mx-1">→</span>}
+                    {ev.new_status && <StatusBadge status={ev.new_status} />}
+                  </div>
+                )}
+                {ev.note && <p className="text-xs text-gray-600">{ev.note}</p>}
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-gray-100 pt-3 space-y-2">
+            <Field label="Add Note" value={manualNote} onChange={setManualNote} textarea placeholder="Log a call, follow-up, meeting…" />
+            <div className="flex justify-end">
+              <Btn onClick={handleAddNote} disabled={saving || !manualNote.trim()}>Add Note</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function InfoRow({ label, children }) {
+  return (
+    <div>
+      <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{label}</div>
+      <div className="text-sm text-gray-800 mt-0.5">{children}</div>
+    </div>
+  )
+}
+
+// ── Tab filters ────────────────────────────────────────────────────────────────
+
+const TABS = ['all', 'draft', 'sent', 'follow_up_due', 'accepted', 'lost', 'expired', 'converted']
+
+// ── Main page ──────────────────────────────────────────────────────────────────
+
+export default function QuotesPage() {
+  const [quotes, setQuotes] = useState([])
+  const [clients, setClients] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('all')
+  const [showNew, setShowNew] = useState(false)
+  const [selected, setSelected] = useState(null)
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch('/quotes'),
+      apiFetch('/clients'),
+    ]).then(([q, c]) => {
+      setQuotes(q)
+      setClients(c)
+    }).finally(() => setLoading(false))
+  }, [])
+
+  function handleCreated(q) {
+    setQuotes(prev => [q, ...prev])
+    setShowNew(false)
+    setSelected(q)
+  }
+
+  function handleUpdated(updated) {
+    setQuotes(prev => prev.map(q => q.id === updated.id ? updated : q))
+    setSelected(updated)
+  }
+
+  const filtered = activeTab === 'all' ? quotes : quotes.filter(q => q.status === activeTab)
+
+  const tabLabel = (t) => {
+    if (t === 'all') return `All (${quotes.length})`
+    const count = quotes.filter(q => q.status === t).length
+    const cfg = STATUS_CFG[t]
+    return `${cfg?.label ?? t} (${count})`
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-gray-400">Loading quotes…</div>
+    )
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Quotes</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Commercial pipeline — track every opportunity from lead to job</p>
+        </div>
+        <Btn onClick={() => setShowNew(true)}>+ New Quote</Btn>
+      </div>
+
+      <SummaryCards quotes={quotes} />
+
+      {/* Status filter tabs */}
+      <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
+        {TABS.map(t => (
+          <button key={t} onClick={() => setActiveTab(t)}
+            className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+              activeTab === t ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:text-gray-800'
+            }`}>
+            {tabLabel(t)}
+          </button>
+        ))}
+      </div>
+
+      {/* Quote cards */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-sm text-gray-400">
+          {activeTab === 'all' ? 'No quotes yet. Create your first one.' : `No ${STATUS_CFG[activeTab]?.label ?? activeTab} quotes.`}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {filtered.map(q => {
+            const client = clients.find(c => c.id === q.client_id)
+            return (
+              <button key={q.id} onClick={() => setSelected(q)}
+                className="text-left bg-white rounded-lg border border-gray-100 p-4 hover:border-gray-300 hover:shadow-sm transition-all">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="font-medium text-sm text-gray-900 leading-snug">{q.title}</div>
+                  <StatusBadge status={q.status} />
+                </div>
+                {(client || q.client_name) && (
+                  <div className="text-xs text-gray-500 mb-1">{client?.name ?? q.client_name}</div>
+                )}
+                {q.quote_number && (
+                  <div className="text-[11px] text-gray-400 mb-2">{q.quote_number} · {q.revision}</div>
+                )}
+                {q.total_inc_vat != null && (
+                  <div className="text-sm font-semibold text-gray-800 mb-2">
+                    {q.currency} {Number(q.total_inc_vat).toLocaleString()} incl. VAT
+                  </div>
+                )}
+                <div className="flex gap-3 text-[10px] text-gray-400">
+                  {q.sent_at && <span>Sent {formatDate(q.sent_at)}</span>}
+                  {q.follow_up_at && q.status !== 'accepted' && q.status !== 'lost' && (
+                    <span className={new Date(q.follow_up_at) < new Date() ? 'text-amber-500 font-medium' : ''}>
+                      Follow-up {formatDate(q.follow_up_at)}
+                    </span>
+                  )}
+                  {q.expires_at && <span>Exp. {formatDate(q.expires_at)}</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {showNew && (
+        <NewQuoteModal
+          clients={clients}
+          onClose={() => setShowNew(false)}
+          onCreated={handleCreated}
+        />
+      )}
+
+      {selected && (
+        <QuoteDetailModal
+          quote={selected}
+          clients={clients}
+          onClose={() => setSelected(null)}
+          onUpdated={handleUpdated}
+        />
+      )}
+    </div>
+  )
+}

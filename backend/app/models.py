@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Float, ForeignKey,
-    Integer, JSON, String, Text, Uuid,
+    Integer, JSON, Numeric, String, Text, Uuid,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -359,6 +359,80 @@ class PodSpec(Base):
     wall_build_up  = relationship("BuildUp", foreign_keys=[wall_build_up_id])
     floor_build_up = relationship("BuildUp", foreign_keys=[floor_build_up_id])
     roof_build_up  = relationship("BuildUp", foreign_keys=[roof_build_up_id])
+    quotes = relationship("Quote", back_populates="pod_spec")
+
+
+class Client(Base):
+    __tablename__ = "clients"
+
+    id           = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name         = Column(String(255), nullable=False)
+    company_name = Column(String(255))
+    email        = Column(String(255))
+    phone        = Column(String(50))
+    address      = Column(Text)
+    source       = Column(String(100))
+    client_type  = Column(String(50))
+    notes        = Column(Text)
+    created_at   = Column(DateTime(timezone=True), default=_now)
+    updated_at   = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    quotes = relationship("Quote", back_populates="client")
+
+
+class Quote(Base):
+    __tablename__ = "quotes"
+
+    id           = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    pod_spec_id  = Column(Integer, ForeignKey("pod_specs.id"), nullable=True)
+    client_id    = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=True)
+    quote_number = Column(String(50), unique=True, nullable=True)
+    revision     = Column(String(20), nullable=False, default="Rev 1")
+    client_name  = Column(String(255))
+    client_email = Column(String(255))
+    title        = Column(String(255), nullable=False)
+    status       = Column(String(30), nullable=False, default="draft")
+    lead_source  = Column(String(100))
+    lost_reason  = Column(String(100))
+    total_ex_vat = Column(Numeric(10, 2))
+    total_inc_vat = Column(Numeric(10, 2))
+    currency     = Column(String(10), nullable=False, default="EUR")
+    deposit_percent   = Column(Numeric(5, 2))
+    deposit_amount    = Column(Numeric(10, 2))
+    payment_status    = Column(String(30))
+    payment_link      = Column(Text)
+    spec_snapshot     = Column(JSON)
+    pricing_snapshot  = Column(JSON)
+    notes             = Column(Text)
+    sent_at           = Column(DateTime(timezone=True))
+    accepted_at       = Column(DateTime(timezone=True))
+    lost_at           = Column(DateTime(timezone=True))
+    expires_at        = Column(DateTime(timezone=True))
+    converted_to_job_at     = Column(DateTime(timezone=True))
+    follow_up_at            = Column(DateTime(timezone=True))
+    last_followed_up_at     = Column(DateTime(timezone=True))
+    accepted_revision_locked = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    pod_spec = relationship("PodSpec", back_populates="quotes")
+    client   = relationship("Client", back_populates="quotes")
+    events   = relationship("QuoteEvent", back_populates="quote", cascade="all, delete-orphan")
+
+
+class QuoteEvent(Base):
+    __tablename__ = "quote_events"
+
+    id         = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    quote_id   = Column(Uuid(as_uuid=True), ForeignKey("quotes.id", ondelete="CASCADE"), nullable=False)
+    event_type = Column(String(50), nullable=False)
+    old_status = Column(String(30))
+    new_status = Column(String(30))
+    note       = Column(Text)
+    created_by = Column(String(255))
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    quote = relationship("Quote", back_populates="events")
 
 
 class OffcutRegister(Base):

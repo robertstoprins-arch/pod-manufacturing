@@ -23,6 +23,13 @@ function Icon({ id }) {
         <rect x="2" y="10.5" width="12" height="2.5" rx="0.5" />
       </>
     ),
+    quotes: (
+      <>
+        <path d="M2 3.5h12M2 6.5h8M2 9.5h10M2 12.5h6" strokeLinecap="round" />
+        <circle cx="13" cy="11" r="2.5" />
+        <path d="M13 9.5v1.5l1 1" strokeLinecap="round" />
+      </>
+    ),
     orders: (
       <>
         <rect x="2.5" y="1.5" width="11" height="13" rx="1" />
@@ -84,6 +91,7 @@ const nav = [
   { id: 'build_ups',        label: 'Build-Ups' },
   { id: 'materials',        label: 'Materials' },
   { id: 'finish_catalogue', label: 'Finishes' },
+  { id: 'quotes',           label: 'Quotes' },
   { id: 'orders',           label: 'Orders' },
   { id: 'production',       label: 'Production' },
   { id: 'inventory',        label: 'Inventory' },

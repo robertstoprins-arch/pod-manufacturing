@@ -11,6 +11,7 @@ import BuildUpEditor from './pages/BuildUpEditor'
 import MaterialLibraryPage from './pages/MaterialLibrary'
 import FinishCataloguePage from './pages/FinishCatalogue'
 import SettingsPage from './pages/Settings'
+import QuotesPage from './pages/Quotes'
 
 export default function App() {
   const [page, setPage] = useState('dashboard')
@@ -21,6 +22,7 @@ export default function App() {
     build_ups:        <BuildUpEditor />,
     materials:        <MaterialLibraryPage />,
     finish_catalogue: <FinishCataloguePage />,
+    quotes:           <QuotesPage />,
     orders:           <Orders />,
     production:       <Production />,
     inventory:        <Inventory />,

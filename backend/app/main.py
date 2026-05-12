@@ -36,6 +36,8 @@ from app.api.provisional_allowances import router as provisional_allowances_rout
 from app.api.settings import router as settings_router
 from app.api.finish_catalogue import router as finish_catalogue_router
 from app.api.finish_packages import router as finish_packages_router
+from app.api.clients import router as clients_router
+from app.api.quotes import router as quotes_router
 
 app = FastAPI(
     title="Pod Manufacturing API",
@@ -75,3 +77,5 @@ app.include_router(provisional_allowances_router)
 app.include_router(settings_router)
 app.include_router(finish_catalogue_router)
 app.include_router(finish_packages_router)
+app.include_router(clients_router)
+app.include_router(quotes_router)
