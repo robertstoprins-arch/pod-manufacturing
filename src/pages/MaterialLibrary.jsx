@@ -463,9 +463,10 @@ export default function MaterialLibraryPage() {
   const [deleteTarget,setDeleteTarget]= useState(null)
   const [showAdd,     setShowAdd]     = useState(false)
   const [filter,      setFilter]      = useState('')
+  const [loadingMats, setLoadingMats] = useState(true)
 
   useEffect(() => {
-    apiFetch('/materials').then(setMaterials).catch(console.error)
+    apiFetch('/materials').then(setMaterials).catch(console.error).finally(() => setLoadingMats(false))
   }, [])
 
   const visible = materials.filter(m => !m.properties?.hide_from_library)
@@ -560,7 +561,10 @@ export default function MaterialLibraryPage() {
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
+        {loadingMats && (
+          <div className="flex items-center justify-center h-32 text-sm text-gray-400">Loading materials…</div>
+        )}
+        {!loadingMats && filtered.length === 0 && (
           <div className="flex items-center justify-center h-32 text-sm text-gray-400">
             {filter ? 'No materials match that filter.' : 'No materials found.'}
           </div>

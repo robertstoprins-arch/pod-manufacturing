@@ -79,3 +79,8 @@ app.include_router(finish_catalogue_router)
 app.include_router(finish_packages_router)
 app.include_router(clients_router)
 app.include_router(quotes_router)
+
+
+@app.get("/ping", tags=["health"])
+def ping():
+    return {"ok": True}
