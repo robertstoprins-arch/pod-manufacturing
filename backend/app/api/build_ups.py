@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import BuildUp, BuildUpLayer, MaterialLibrary
+from app.models import BuildUp, BuildUpLayer, MaterialLibrary, Supplier
 from app.skills.build_up_resolver import (
     ResolverLayer,
     ResolverResult,
@@ -60,6 +60,8 @@ class MaterialOut(BaseModel):
     spec_ref: str | None
     unit: str | None
     properties: dict | None
+    preferred_supplier_id: str | None = None
+    preferred_supplier_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -106,6 +108,7 @@ class EvidenceIn(BaseModel):
     evidence_notes: str | None = None
     evidence_status_override: str | None = None  # manual override; None = auto-compute
     evidence_category: str | None = None  # manufactured_product | generic_assembly | raw_material | provisional_allowance | service_item
+    preferred_supplier_id: str | None = None  # UUID of supplier from directory; empty string = clear
 
 
 class LayerIn(BaseModel):
@@ -344,9 +347,20 @@ def _compute_and_respond(
 
 # ── Materials endpoints ───────────────────────────────────────────────────────
 
+def _enrich_material(mat: MaterialLibrary, db: Session) -> MaterialOut:
+    out = MaterialOut.model_validate(mat, from_attributes=True)
+    if mat.preferred_supplier_id:
+        supplier = db.get(Supplier, mat.preferred_supplier_id)
+        if supplier:
+            out.preferred_supplier_id = str(mat.preferred_supplier_id)
+            out.preferred_supplier_name = supplier.name
+    return out
+
+
 @router.get("/materials", response_model=list[MaterialOut])
 def list_materials(db: Db):
-    return db.query(MaterialLibrary).order_by(MaterialLibrary.id).all()
+    mats = db.query(MaterialLibrary).order_by(MaterialLibrary.id).all()
+    return [_enrich_material(m, db) for m in mats]
 
 
 @router.get("/materials/{material_id}", response_model=MaterialOut)
@@ -354,7 +368,7 @@ def get_material(material_id: int, db: Db):
     mat = db.get(MaterialLibrary, material_id)
     if mat is None:
         raise HTTPException(status_code=404, detail="Material not found.")
-    return mat
+    return _enrich_material(mat, db)
 
 
 @router.patch("/materials/{material_id}/evidence", response_model=MaterialOut)
@@ -382,6 +396,25 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
     if body.evidence_category is not None:
         mat.evidence_category = body.evidence_category
 
+    # Preferred supplier link
+    if body.preferred_supplier_id is not None:
+        if body.preferred_supplier_id == '':
+            mat.preferred_supplier_id = None
+        else:
+            import uuid as _uuid
+            try:
+                supplier_uuid = _uuid.UUID(body.preferred_supplier_id)
+                supplier = db.get(Supplier, supplier_uuid)
+                if supplier:
+                    mat.preferred_supplier_id = supplier_uuid
+                    # Auto-fill supplier_name and supplier_url from directory if not already set
+                    if not mat.supplier_name:
+                        mat.supplier_name = supplier.name
+                    if not mat.supplier_url and supplier.website:
+                        mat.supplier_url = supplier.website
+            except ValueError:
+                pass
+
     # Evidence status: manual override takes precedence over auto-compute
     if body.evidence_status_override is not None:
         override = body.evidence_status_override.lower()
@@ -392,7 +425,15 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
 
     db.commit()
     db.refresh(mat)
-    return mat
+
+    # Build response — enrich with preferred supplier name
+    out = MaterialOut.model_validate(mat, from_attributes=True)
+    if mat.preferred_supplier_id:
+        supplier = db.get(Supplier, mat.preferred_supplier_id)
+        if supplier:
+            out.preferred_supplier_id = str(mat.preferred_supplier_id)
+            out.preferred_supplier_name = supplier.name
+    return out
 
 
 class MaterialCreateIn(BaseModel):

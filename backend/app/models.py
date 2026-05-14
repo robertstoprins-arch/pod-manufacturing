@@ -115,11 +115,15 @@ class MaterialLibrary(Base):
     # Extra metadata: default_role, default_thickness_mm, include_in_u_value, sd_value_m, category
     properties = Column(JSON)
 
+    # Preferred supplier link
+    preferred_supplier_id = Column(Uuid(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
+
     # Immutable versioning: new record per change, never update existing
     superseded_by = Column(Integer, ForeignKey("material_library.id"), nullable=True)
 
     library_version = relationship("LibraryVersion", back_populates="materials")
     layers = relationship("BuildUpLayer", back_populates="material")
+    preferred_supplier = relationship("Supplier", foreign_keys=[preferred_supplier_id])
     offcuts = relationship("OffcutRegister", back_populates="material")
     prices = relationship("MaterialPrice", back_populates="material", order_by="MaterialPrice.id")
 

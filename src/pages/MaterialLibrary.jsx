@@ -184,9 +184,10 @@ const EVIDENCE_STATUS_OPTIONS = [
   { value: 'missing',     label: 'Missing — no evidence available' },
 ]
 
-function EvidenceModal({ mat, onClose, onSaved }) {
+function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
   const [form, setForm] = useState({
     manufacturer:             mat.manufacturer             ?? '',
+    preferred_supplier_id:    mat.preferred_supplier_id   ?? '',
     supplier_name:            mat.supplier_name            ?? '',
     supplier_url:             mat.supplier_url             ?? '',
     datasheet_url:            mat.datasheet_url            ?? '',
@@ -199,6 +200,21 @@ function EvidenceModal({ mat, onClose, onSaved }) {
     evidence_status_override: '',  // empty = auto-compute
     evidence_category:        mat.evidence_category        ?? 'manufactured_product',
   })
+
+  function handleSupplierSelect(supplierId) {
+    if (!supplierId) {
+      set('preferred_supplier_id', '')
+      return
+    }
+    const sup = suppliers.find(s => s.id === supplierId)
+    if (!sup) return
+    setForm(f => ({
+      ...f,
+      preferred_supplier_id: supplierId,
+      supplier_name: f.supplier_name || sup.name,
+      supplier_url:  f.supplier_url  || sup.website || '',
+    }))
+  }
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
 
@@ -239,6 +255,21 @@ function EvidenceModal({ mat, onClose, onSaved }) {
       }
     >
       <Field label="Manufacturer"        value={form.manufacturer}     onChange={v => set('manufacturer', v)} />
+      {suppliers.length > 0 && (
+        <div>
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">Preferred Supplier (from directory)</label>
+          <select
+            value={form.preferred_supplier_id ?? ''}
+            onChange={e => handleSupplierSelect(e.target.value)}
+            className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500"
+          >
+            <option value="">— None —</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}{s.category ? ` · ${s.category.replace(/_/g, ' ')}` : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <Field label="Supplier name"       value={form.supplier_name}    onChange={v => set('supplier_name', v)} />
       <Field label="Supplier URL"        value={form.supplier_url}     onChange={v => set('supplier_url', v)}     placeholder="https://…" />
       <Field label="Data sheet URL"      value={form.datasheet_url}    onChange={v => set('datasheet_url', v)}    placeholder="https://…" />
@@ -403,9 +434,10 @@ function MaterialRow({ m, onEdit, onDelete }) {
       <td className="py-3 px-4 min-w-[220px]">
         <div className="font-medium text-gray-900 text-[12px] leading-snug">{m.name}</div>
         {m.spec_ref && <div className="text-[10px] text-gray-500 font-mono mt-0.5">{m.spec_ref}</div>}
-        {m.supplier_name && (
-          <div className={`text-[10px] mt-0.5 ${isBuilding ? 'text-blue-600' : 'text-gray-400'}`}>{m.supplier_name}</div>
-        )}
+        {m.preferred_supplier_name
+          ? <div className="text-[10px] mt-0.5 text-teal-600 font-medium">⬡ {m.preferred_supplier_name}</div>
+          : m.supplier_name && <div className={`text-[10px] mt-0.5 ${isBuilding ? 'text-blue-600' : 'text-gray-400'}`}>{m.supplier_name}</div>
+        }
         {notes && (
           <div className="mt-1.5 text-[10px] text-gray-500 italic leading-relaxed border-l-2 border-amber-300 pl-2 bg-amber-50/50 py-0.5 rounded-r">
             {notes}
@@ -459,6 +491,7 @@ function MaterialRow({ m, onEdit, onDelete }) {
 
 export default function MaterialLibraryPage() {
   const [materials,   setMaterials]   = useState([])
+  const [suppliers,   setSuppliers]   = useState([])
   const [editTarget,  setEditTarget]  = useState(null)
   const [deleteTarget,setDeleteTarget]= useState(null)
   const [showAdd,     setShowAdd]     = useState(false)
@@ -466,7 +499,13 @@ export default function MaterialLibraryPage() {
   const [loadingMats, setLoadingMats] = useState(true)
 
   useEffect(() => {
-    apiFetch('/materials').then(setMaterials).catch(console.error).finally(() => setLoadingMats(false))
+    Promise.all([
+      apiFetch('/materials'),
+      apiFetch('/suppliers'),
+    ]).then(([mats, sups]) => {
+      setMaterials(mats)
+      setSuppliers(sups)
+    }).catch(console.error).finally(() => setLoadingMats(false))
   }, [])
 
   const visible = materials.filter(m => !m.properties?.hide_from_library)
@@ -575,7 +614,7 @@ export default function MaterialLibraryPage() {
         <AddMaterialModal onClose={() => setShowAdd(false)} onAdded={handleAdded} />
       )}
       {editTarget && (
-        <EvidenceModal mat={editTarget} onClose={() => setEditTarget(null)} onSaved={m => { handleSaved(m); setEditTarget(null) }} />
+        <EvidenceModal mat={editTarget} suppliers={suppliers} onClose={() => setEditTarget(null)} onSaved={m => { handleSaved(m); setEditTarget(null) }} />
       )}
       {deleteTarget && (
         <DeleteConfirm mat={deleteTarget} onClose={() => setDeleteTarget(null)} onDeleted={id => { handleDeleted(id); setDeleteTarget(null) }} />
