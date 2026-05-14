@@ -1,6 +1,6 @@
 # Manufacture Suite — Hermes Project Context
 # Load this at the start of every session.
-# Last updated: 2026-05-10
+# Last updated: 2026-05-14
 
 ---
 
@@ -37,16 +37,27 @@ Auto-deploy: git push to main → Vercel and Render deploy automatically.
 - Material Library — supplier links, datasheets, DoPs, evidence status and category grouping
 - Finish Catalogue — customer-facing finish/product/furniture choices
 - Settings page — markup %, VAT %, currency, VAT mode, pricing preview
+- Quote Pipeline — clients, quotes with full status flow, event history, follow-up dates
+- Supplier Directory — add/edit/archive/reactivate, category filter, search, CSV import with column mapping and duplicate detection
 - Sidebar navigation with all pages
 
 ### Backend (FastAPI/Python on Render)
 - PostgreSQL via Neon (SQLAlchemy + Alembic migrations)
-- Migrations run automatically at startup
+- Migrations run automatically at startup (0001–0015)
 - PDF generation via ReportLab — Internal Technical Pack + Client Quote PDF
 - Material evidence API — verified/partial/provisional/missing status
 - Account Settings API — markup, VAT, currency
 - BOM endpoint with evidence warnings
+- Quote Pipeline API — /clients, /quotes (CRUD + status PATCH with auto-logic + events), /quotes/{id}/events
+- Supplier Directory API — /suppliers (CRUD + archive/reactivate + bulk import)
+- GET /ping — lightweight keep-alive endpoint for UptimeRobot
 - Seed scripts — standard materials, build-ups, finish catalogue, material evidence
+
+### Infrastructure
+- UptimeRobot monitor on /ping — pings every 5 min to prevent Render cold starts
+- Render auto-deploy connected to GitHub main branch (backend/ path filter)
+- Vercel auto-deploy on every push to main
+- Warm-up banner in App.jsx — appears if backend takes >2s to respond
 
 ### Authentication
 - Clerk — invite-only mode, production keys configured
@@ -83,11 +94,18 @@ Run with: python seeds/material_evidence_seed.py --force
 
 | Phase | Scope | Status |
 |---|---|---|
-| Phase 1 | Stabilise MVP — PDF, drawings, BOM, evidence, settings | Current |
-| Phase 2 | Quote pipeline — status, history, client records, sent/accepted/lost | Next |
-| Phase 3 | Procurement/RFQ — supplier directory, RFQ packages, price comparison | Near-term |
+| Phase 1 | Stabilise MVP — PDF, drawings, BOM, evidence, settings | Complete |
+| Phase 2 | Quote pipeline — clients, quotes, status flow, event history | Complete |
+| Phase 3A | Supplier Directory — CRUD, archive, CSV import | Complete |
+| Phase 3B | Link materials to preferred supplier | Next |
+| Phase 3C | RFQ package generator — accepted quote → BOM grouped by supplier → RFQ JSON | Planned |
+| Phase 3D | Secure supplier response link — email + web form | Planned |
+| Phase 3E | Supplier response comparison — price, lead time, margin impact | Planned |
 | Phase 4 | Production job pack — convert quote to job, QA/QC, handover | Mid-term |
 | Phase 5 | Closed-loop AI — event log, recommendations, margin alerts, learning | Strategic |
+| Future | OpenRFQ Connector — open-source schemas, CLI, MCP connector | Strategic |
+
+Full RFQ concept: docs/agent/rfq_supplier_exchange_concept.md
 
 ---
 
@@ -136,6 +154,7 @@ Roberts approves anything before it touches production, GitHub or external syste
 | docs/agent/hermes_operating_rules.md | Hermes operating rules |
 | docs/agent/hermes_allowed_tasks.md | Hermes allowed tasks |
 | docs/agent/hermes_forbidden_tasks.md | Hermes forbidden tasks |
+| docs/agent/rfq_supplier_exchange_concept.md | Full RFQ/Supplier Exchange concept — schemas, adoption levels, dev stages, open-source plan |
 
 ---
 
