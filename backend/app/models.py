@@ -440,9 +440,10 @@ class Quote(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
-    pod_spec = relationship("PodSpec", back_populates="quotes")
-    client   = relationship("Client", back_populates="quotes")
-    events   = relationship("QuoteEvent", back_populates="quote", cascade="all, delete-orphan")
+    pod_spec     = relationship("PodSpec", back_populates="quotes")
+    client       = relationship("Client", back_populates="quotes")
+    events       = relationship("QuoteEvent", back_populates="quote", cascade="all, delete-orphan")
+    rfq_requests = relationship("RfqRequest", back_populates="quote", cascade="all, delete-orphan")
 
 
 class QuoteEvent(Base):
@@ -458,6 +459,52 @@ class QuoteEvent(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
 
     quote = relationship("Quote", back_populates="events")
+
+
+class RfqRequest(Base):
+    __tablename__ = "rfq_requests"
+
+    id             = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    quote_id       = Column(Uuid(as_uuid=True), ForeignKey("quotes.id", ondelete="CASCADE"), nullable=False)
+    supplier_id    = Column(Uuid(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
+    supplier_name  = Column(String(255), nullable=False)
+    supplier_email = Column(String(255), nullable=True)
+    token          = Column(Uuid(as_uuid=True), nullable=False, unique=True, default=uuid.uuid4)
+    status         = Column(String(30), nullable=False, default="pending")
+    items_json     = Column(JSON, nullable=False)
+    sent_at        = Column(DateTime(timezone=True))
+    viewed_at      = Column(DateTime(timezone=True))
+    responded_at   = Column(DateTime(timezone=True))
+    expires_at     = Column(DateTime(timezone=True))
+    response_notes         = Column(Text)
+    response_currency      = Column(String(10))
+    response_valid_until   = Column(DateTime(timezone=True))
+    response_total         = Column(Numeric(12, 2))
+    created_at     = Column(DateTime(timezone=True), default=_now)
+
+    quote          = relationship("Quote", back_populates="rfq_requests")
+    response_lines = relationship("RfqResponseLine", back_populates="rfq_request", cascade="all, delete-orphan")
+
+
+class RfqResponseLine(Base):
+    __tablename__ = "rfq_response_lines"
+
+    id              = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rfq_request_id  = Column(Uuid(as_uuid=True), ForeignKey("rfq_requests.id", ondelete="CASCADE"), nullable=False)
+    line_id         = Column(String(20), nullable=False)
+    description     = Column(String(500))
+    unit_price      = Column(Numeric(12, 4))
+    quantity        = Column(Numeric(12, 3))
+    total_price     = Column(Numeric(12, 2))
+    currency        = Column(String(10))
+    lead_time_days  = Column(Integer)
+    availability    = Column(String(50))
+    substitute_offered     = Column(Boolean, default=False)
+    substitute_description = Column(Text)
+    notes           = Column(Text)
+    created_at      = Column(DateTime(timezone=True), default=_now)
+
+    rfq_request = relationship("RfqRequest", back_populates="response_lines")
 
 
 class OffcutRegister(Base):

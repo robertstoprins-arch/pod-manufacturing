@@ -13,9 +13,14 @@ import FinishCataloguePage from './pages/FinishCatalogue'
 import SettingsPage from './pages/Settings'
 import QuotesPage from './pages/Quotes'
 import SuppliersPage from './pages/Suppliers'
+import SupplierRespond from './pages/SupplierRespond'
 import { apiFetch } from './api/client'
 
 export default function App() {
+  // Public route — no auth required
+  if (window.location.pathname.startsWith('/rfq-respond/')) {
+    return <SupplierRespond />
+  }
   const [page, setPage] = useState('dashboard')
   const [warming, setWarming] = useState(false)
 

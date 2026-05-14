@@ -202,6 +202,9 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [rfq, setRfq] = useState(null)
   const [rfqLoading, setRfqLoading] = useState(false)
   const [rfqErr, setRfqErr] = useState('')
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [rfqResponses, setRfqResponses] = useState(null)
+  const [responsesLoading, setResponsesLoading] = useState(false)
 
   useEffect(() => {
     apiFetch(`/quotes/${quote.id}/events`).then(setEvents).catch(() => {})
@@ -269,6 +272,15 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     a.download = `${rfq.rfq_id || 'rfq'}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function loadResponses() {
+    setResponsesLoading(true)
+    try {
+      const data = await apiFetch(`/quotes/${quote.id}/rfq/responses`)
+      setRfqResponses(data)
+    } catch (_) {}
+    finally { setResponsesLoading(false) }
   }
 
   const tabs = ['details', 'status', 'events', ...(quote.pod_spec_id ? ['rfq'] : [])]
@@ -377,7 +389,8 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                 </div>
                 <div className="flex gap-2">
                   <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(rfq, null, 2))}>Copy JSON</Btn>
-                  <Btn small onClick={downloadRfq}>Download</Btn>
+                  <Btn small variant="secondary" onClick={downloadRfq}>Download</Btn>
+                  <Btn small onClick={() => setShowSendModal(true)}>Send to Suppliers</Btn>
                 </div>
               </div>
 
@@ -392,7 +405,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
               )}
 
               {/* Supplier groups */}
-              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                 {rfq.supplier_groups.map(group => (
                   <div key={group.supplier_name} className="border border-gray-100 rounded-lg overflow-hidden">
                     <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
@@ -438,6 +451,18 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                   </div>
                 ))}
               </div>
+
+              {/* Responses panel */}
+              <RfqResponsesPanel
+                quoteId={quote.id}
+                responses={rfqResponses}
+                loading={responsesLoading}
+                onLoad={loadResponses}
+                onDelete={async (reqId) => {
+                  await apiFetch(`/quotes/${quote.id}/rfq/requests/${reqId}`, { method: 'DELETE' })
+                  loadResponses()
+                }}
+              />
             </>
           )}
           {!rfq && !rfqLoading && !rfqErr && (
@@ -447,9 +472,251 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
               <Btn onClick={loadRfq}>Generate RFQ Package</Btn>
             </div>
           )}
+
+          {showSendModal && rfq && (
+            <SendRfqModal
+              rfq={rfq}
+              quoteId={quote.id}
+              onClose={() => setShowSendModal(false)}
+              onSent={() => { setShowSendModal(false); loadResponses() }}
+            />
+          )}
         </div>
       )}
     </Modal>
+  )
+}
+
+// ── Send RFQ Modal ─────────────────────────────────────────────────────────────
+
+const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin
+
+function SendRfqModal({ rfq, quoteId, onClose, onSent }) {
+  const [targets, setTargets] = useState(
+    rfq.supplier_groups.map(g => ({ supplier_name: g.supplier_name, supplier_email: '', items: g.items }))
+  )
+  const [expiresDays, setExpiresDays] = useState(14)
+  const [sending, setSending] = useState(false)
+  const [sentLinks, setSentLinks] = useState(null)
+  const [err, setErr] = useState('')
+
+  function updateTarget(idx, field, value) {
+    setTargets(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t))
+  }
+
+  async function handleSend() {
+    setSending(true)
+    setErr('')
+    try {
+      const result = await apiFetch(`/quotes/${quoteId}/rfq/send`, {
+        method: 'POST',
+        body: JSON.stringify({ targets, expires_days: expiresDays }),
+      })
+      setSentLinks(result)
+      onSent()
+    } catch (e) {
+      setErr(e.message ?? 'Failed to send')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (sentLinks) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="font-semibold text-gray-900">RFQ links created</div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-600 text-xl leading-none mt-0.5">✕</button>
+        </div>
+        <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">
+          <p className="text-xs text-gray-500">Copy and send these links to your suppliers. Each link is unique and expires in {expiresDays} days.</p>
+          {sentLinks.map(req => (
+            <div key={req.id} className="border border-gray-100 rounded-lg p-3 space-y-1.5">
+              <div className="text-xs font-semibold text-gray-700">{req.supplier_name}</div>
+              {req.supplier_email && <div className="text-[11px] text-gray-400">{req.supplier_email}</div>}
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] text-blue-600 bg-blue-50 rounded px-2 py-1 flex-1 truncate">
+                  {APP_URL}/rfq-respond/{req.token}
+                </code>
+                <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(`${APP_URL}/rfq-respond/${req.token}`)}>
+                  Copy
+                </Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-3 border-t border-gray-100 flex justify-end shrink-0">
+          <Btn onClick={onClose}>Done</Btn>
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <div className="font-semibold text-gray-900">Send RFQ to Suppliers</div>
+            <div className="text-xs text-gray-400 mt-0.5">Each supplier gets a unique private link to fill in their pricing</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-600 text-xl leading-none mt-0.5">✕</button>
+        </div>
+        <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">
+          {targets.map((t, idx) => (
+            <div key={idx} className="border border-gray-100 rounded-lg p-3 space-y-2">
+              <div className="text-xs font-semibold text-gray-700">{t.supplier_name}</div>
+              <div className="text-[11px] text-gray-400">{t.items.length} item{t.items.length !== 1 ? 's' : ''}</div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-500 mb-1">Supplier email (optional)</label>
+                <input
+                  type="email"
+                  value={t.supplier_email}
+                  onChange={e => updateTarget(idx, 'supplier_email', e.target.value)}
+                  placeholder="supplier@example.com"
+                  className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-gray-500"
+                />
+              </div>
+            </div>
+          ))}
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Link expires after (days)</label>
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={expiresDays}
+              onChange={e => setExpiresDays(parseInt(e.target.value) || 14)}
+              className="w-24 bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-gray-500"
+            />
+          </div>
+          {err && <p className="text-xs text-red-500">{err}</p>}
+        </div>
+        <div className="px-6 py-3 border-t border-gray-100 flex justify-end gap-2 shrink-0">
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={handleSend} disabled={sending}>{sending ? 'Creating links…' : `Create ${targets.length} link${targets.length !== 1 ? 's' : ''}`}</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── RFQ Responses Panel ────────────────────────────────────────────────────────
+
+const RESP_STATUS = {
+  pending:   { cls: 'bg-gray-100 text-gray-500', label: 'Pending' },
+  viewed:    { cls: 'bg-blue-50 text-blue-600',  label: 'Viewed' },
+  responded: { cls: 'bg-green-50 text-green-700', label: 'Responded' },
+  expired:   { cls: 'bg-orange-50 text-orange-600', label: 'Expired' },
+}
+
+function RfqResponsesPanel({ quoteId, responses, loading, onLoad, onDelete }) {
+  const [expanded, setExpanded] = useState(null)
+
+  if (responses === null && !loading) return (
+    <div className="border-t border-gray-100 pt-3">
+      <Btn small variant="secondary" onClick={onLoad}>Show sent requests &amp; responses</Btn>
+    </div>
+  )
+
+  if (loading) return (
+    <div className="border-t border-gray-100 pt-3">
+      <p className="text-xs text-gray-400">Loading responses…</p>
+    </div>
+  )
+
+  return (
+    <div className="border-t border-gray-100 pt-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-600">Sent requests & responses ({responses.length})</p>
+        <Btn small variant="secondary" onClick={onLoad}>Refresh</Btn>
+      </div>
+      {responses.length === 0 && (
+        <p className="text-xs text-gray-400">No RFQ requests sent yet.</p>
+      )}
+      {responses.map(req => {
+        const sc = RESP_STATUS[req.status] ?? RESP_STATUS.pending
+        const isOpen = expanded === req.id
+        return (
+          <div key={req.id} className="border border-gray-100 rounded-lg overflow-hidden">
+            <div
+              className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-gray-50"
+              onClick={() => setExpanded(isOpen ? null : req.id)}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-800">{req.supplier_name}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${sc.cls}`}>{sc.label}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {req.response_total != null && (
+                  <span className="text-xs font-semibold text-green-700">
+                    {req.response_currency || '—'} {Number(req.response_total).toLocaleString()}
+                  </span>
+                )}
+                <span className="text-[10px] text-gray-400">{new Date(req.created_at).toLocaleDateString()}</span>
+                <span className="text-gray-300 text-xs">{isOpen ? '▲' : '▼'}</span>
+              </div>
+            </div>
+
+            {isOpen && (
+              <div className="border-t border-gray-50 px-3 py-2 space-y-2 bg-gray-50/50">
+                <div className="flex flex-wrap gap-4 text-[11px] text-gray-500">
+                  {req.supplier_email && <span>Email: {req.supplier_email}</span>}
+                  {req.expires_at && <span>Expires: {new Date(req.expires_at).toLocaleDateString()}</span>}
+                  {req.viewed_at && <span>Viewed: {new Date(req.viewed_at).toLocaleDateString()}</span>}
+                  {req.responded_at && <span>Responded: {new Date(req.responded_at).toLocaleDateString()}</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-[11px] text-blue-600 bg-blue-50 rounded px-2 py-1 flex-1 truncate">
+                    {APP_URL}/rfq-respond/{req.token}
+                  </code>
+                  <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(`${APP_URL}/rfq-respond/${req.token}`)}>Copy link</Btn>
+                </div>
+                {req.response_notes && (
+                  <p className="text-[11px] text-gray-600 italic">"{req.response_notes}"</p>
+                )}
+                {req.response_lines?.length > 0 && (
+                  <table className="w-full text-xs mt-1">
+                    <thead>
+                      <tr>
+                        <th className="text-left py-1 text-[10px] font-medium text-gray-400 uppercase">Item</th>
+                        <th className="text-right py-1 text-[10px] font-medium text-gray-400 uppercase">Unit Price</th>
+                        <th className="text-right py-1 text-[10px] font-medium text-gray-400 uppercase">Total</th>
+                        <th className="py-1 text-[10px] font-medium text-gray-400 uppercase">Lead</th>
+                        <th className="py-1 text-[10px] font-medium text-gray-400 uppercase">Avail.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {req.response_lines.map(line => (
+                        <tr key={line.id} className="border-t border-gray-100">
+                          <td className="py-1 pr-2 text-gray-700">{line.description || `#${line.line_id}`}</td>
+                          <td className="py-1 text-right font-mono text-gray-600">
+                            {line.unit_price != null ? `${line.currency || ''} ${Number(line.unit_price).toFixed(2)}` : '—'}
+                          </td>
+                          <td className="py-1 text-right font-mono text-gray-600">
+                            {line.total_price != null ? `${Number(line.total_price).toFixed(2)}` : '—'}
+                          </td>
+                          <td className="py-1 pl-2 text-gray-500">{line.lead_time_days != null ? `${line.lead_time_days}d` : '—'}</td>
+                          <td className="py-1 pl-2 text-gray-500">{line.availability || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={() => onDelete(req.id)}
+                    className="text-[11px] text-red-400 hover:text-red-600"
+                  >
+                    Delete request
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
