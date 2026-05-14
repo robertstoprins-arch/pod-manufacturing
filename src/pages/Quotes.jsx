@@ -199,6 +199,9 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [statusNote, setStatusNote] = useState('')
   const [manualNote, setManualNote] = useState('')
   const [err, setErr] = useState('')
+  const [rfq, setRfq] = useState(null)
+  const [rfqLoading, setRfqLoading] = useState(false)
+  const [rfqErr, setRfqErr] = useState('')
 
   useEffect(() => {
     apiFetch(`/quotes/${quote.id}/events`).then(setEvents).catch(() => {})
@@ -244,6 +247,32 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
 
   const clientName = clients.find(c => c.id === quote.client_id)?.name ?? quote.client_name ?? '—'
 
+  async function loadRfq() {
+    setRfqLoading(true)
+    setRfqErr('')
+    try {
+      const data = await apiFetch(`/quotes/${quote.id}/rfq`)
+      setRfq(data)
+    } catch (e) {
+      setRfqErr(e.message ?? 'Failed to generate RFQ')
+    } finally {
+      setRfqLoading(false)
+    }
+  }
+
+  function downloadRfq() {
+    if (!rfq) return
+    const blob = new Blob([JSON.stringify(rfq, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${rfq.rfq_id || 'rfq'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const tabs = ['details', 'status', 'events', ...(quote.pod_spec_id ? ['rfq'] : [])]
+
   return (
     <Modal
       title={quote.title}
@@ -252,9 +281,9 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     >
       {/* Tabs */}
       <div className="flex gap-1 -mt-1 mb-2 border-b border-gray-100 pb-2">
-        {['details', 'status', 'events'].map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-1 text-xs rounded font-medium capitalize transition-colors ${tab === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}>
+        {tabs.map(t => (
+          <button key={t} onClick={() => { setTab(t); if (t === 'rfq' && !rfq) loadRfq() }}
+            className={`px-3 py-1 text-xs rounded font-medium uppercase tracking-wide transition-colors ${tab === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}>
             {t}
           </button>
         ))}
@@ -326,6 +355,98 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
               <Btn onClick={handleAddNote} disabled={saving || !manualNote.trim()}>Add Note</Btn>
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'rfq' && (
+        <div className="space-y-3">
+          {rfqLoading && <p className="text-xs text-gray-400 text-center py-8">Generating RFQ package…</p>}
+          {rfqErr && <p className="text-xs text-red-500">{rfqErr}</p>}
+          {rfq && !rfqLoading && (
+            <>
+              {/* Summary bar */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
+                <div>
+                  <div className="text-xs font-semibold text-gray-700">{rfq.rfq_id}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">
+                    {rfq.total_items} items · {rfq.total_suppliers} supplier{rfq.total_suppliers !== 1 ? 's' : ''}
+                    {rfq.spec_summary?.estimated_total != null && (
+                      <span> · est. {rfq.project.currency} {Number(rfq.spec_summary.estimated_total).toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(rfq, null, 2))}>Copy JSON</Btn>
+                  <Btn small onClick={downloadRfq}>Download</Btn>
+                </div>
+              </div>
+
+              {/* Warnings */}
+              {rfq.spec_summary?.warnings?.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                  <p className="text-[11px] font-medium text-amber-700">BOM warnings</p>
+                  {rfq.spec_summary.warnings.map((w, i) => (
+                    <p key={i} className="text-[11px] text-amber-600">· {w}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Supplier groups */}
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {rfq.supplier_groups.map(group => (
+                  <div key={group.supplier_name} className="border border-gray-100 rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-700">{group.supplier_name}</span>
+                      {group.estimated_subtotal != null && (
+                        <span className="text-[11px] text-gray-500">
+                          est. {rfq.project.currency} {Number(group.estimated_subtotal).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead className="border-b border-gray-100">
+                        <tr>
+                          <th className="text-left px-4 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Material</th>
+                          <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
+                          <th className="text-left px-2 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
+                          <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Est. Cost</th>
+                          <th className="px-3 py-1.5"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.items.map(item => (
+                          <tr key={item.line_id} className="border-t border-gray-50">
+                            <td className="px-4 py-2 text-gray-800">{item.description}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 font-mono">{item.quantity}</td>
+                            <td className="px-2 py-2 text-gray-400">{item.unit}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {item.estimated_line_cost != null
+                                ? `${item.currency} ${Number(item.estimated_line_cost).toLocaleString()}`
+                                : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2">
+                              {item.required_evidence?.length > 0 && (
+                                <span className="text-[10px] text-amber-500 font-medium">
+                                  ⚠ {item.required_evidence.join(', ')}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {!rfq && !rfqLoading && !rfqErr && (
+            <div className="text-center py-8 space-y-3">
+              <p className="text-sm text-gray-500">Generate a procurement RFQ package from this quote's BOM.</p>
+              <p className="text-xs text-gray-400">Materials will be grouped by supplier. You can download the JSON or copy it to send.</p>
+              <Btn onClick={loadRfq}>Generate RFQ Package</Btn>
+            </div>
+          )}
         </div>
       )}
     </Modal>

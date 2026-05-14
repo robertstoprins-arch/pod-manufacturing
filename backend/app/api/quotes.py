@@ -274,3 +274,123 @@ def add_event(quote_id: uuid.UUID, body: QuoteEventIn, db: Db):
     db.commit()
     db.refresh(ev)
     return ev
+
+
+@router.get("/{quote_id}/rfq")
+def get_quote_rfq(quote_id: uuid.UUID, db: Db):
+    """
+    Generate a standard RFQ package for a quote.
+
+    Calls the BOM endpoint internally, groups lines by preferred/named supplier,
+    and returns the standard rfq_request JSON (schema v0.1).
+
+    Available for any quote with a linked pod_spec_id — not restricted to accepted only
+    so manufacturers can preview before sending.
+    """
+    from app.api.pod_specs import get_pod_spec_bom
+
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if not quote:
+        raise HTTPException(404, "Quote not found")
+    if not quote.pod_spec_id:
+        raise HTTPException(400, "Quote has no linked pod spec — cannot generate RFQ")
+
+    bom = get_pod_spec_bom(quote.pod_spec_id, db)
+
+    # Group BOM lines by supplier name (prefer preferred_supplier_name, fall back to supplier_name, then "Unassigned")
+    supplier_groups: dict[str, list] = {}
+    for line in bom.lines:
+        key = line.supplier_name or "Unassigned"
+        if key not in supplier_groups:
+            supplier_groups[key] = []
+        supplier_groups[key].append(line)
+
+    rfq_id = f"RFQ-{str(quote_id)[:8].upper()}"
+    currency = quote.currency or bom.currency or "EUR"
+
+    # Build per-supplier RFQ items
+    rfq_suppliers = []
+    line_counter = 1
+    for supplier_name, lines in supplier_groups.items():
+        items = []
+        for line in lines:
+            # Skip zero-quantity framing sub-lines that are nested under the main layer
+            if line.order_quantity == 0:
+                continue
+            items.append({
+                "line_id": str(line_counter),
+                "description": line.material_name,
+                "category": line.element_type.lower(),
+                "quantity": round(line.order_quantity, 3),
+                "unit": line.unit,
+                "supplier_ref": line.supplier_ref or None,
+                "acceptable_substitutes": True,
+                "required_evidence": _required_evidence(line),
+                "element_type": line.element_type,
+                "build_up_name": line.build_up_name,
+                "evidence_status": line.evidence_status,
+                "estimated_unit_price": line.price_per_unit,
+                "estimated_line_cost": line.line_cost,
+                "currency": line.currency or currency,
+                "datasheet_url": line.datasheet_url or None,
+                "dop_url": line.dop_url or None,
+            })
+            line_counter += 1
+
+        if items:
+            rfq_suppliers.append({
+                "supplier_name": supplier_name,
+                "items": items,
+                "estimated_subtotal": round(
+                    sum(i["estimated_line_cost"] for i in items if i["estimated_line_cost"]), 2
+                ) or None,
+            })
+
+    rfq = {
+        "message_type": "rfq_request",
+        "version": "0.1",
+        "rfq_id": rfq_id,
+        "generated_at": _now().isoformat(),
+        "buyer": {
+            "company_name": "Top-R Solutions",
+            "contact_email": "",
+        },
+        "project": {
+            "quote_id": str(quote.id),
+            "quote_number": quote.quote_number or "",
+            "title": quote.title,
+            "client_name": quote.client_name or "",
+            "currency": currency,
+            "required_by": quote.expires_at.date().isoformat() if quote.expires_at else None,
+        },
+        "rfq": {
+            "valid_response_required_by": None,
+            "allow_substitutes": True,
+            "currency": currency,
+        },
+        "spec_summary": {
+            "spec_id": bom.spec_id,
+            "spec_name": bom.spec_name,
+            "areas": bom.areas,
+            "opening_counts": bom.opening_counts,
+            "estimated_total": bom.total_cost,
+            "warnings": bom.warnings,
+        },
+        "supplier_groups": rfq_suppliers,
+        "total_items": line_counter - 1,
+        "total_suppliers": len(rfq_suppliers),
+    }
+
+    return rfq
+
+
+def _required_evidence(line) -> list[str]:
+    ev = line.evidence_status or "missing"
+    if ev == "verified":
+        return []
+    needed = []
+    if not line.datasheet_url:
+        needed.append("datasheet")
+    if not line.dop_url:
+        needed.append("DoP")
+    return needed
