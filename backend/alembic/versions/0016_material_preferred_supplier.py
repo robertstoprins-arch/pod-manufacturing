@@ -16,14 +16,16 @@ depends_on = None
 def upgrade():
     op.add_column(
         "material_library",
-        sa.Column(
-            "preferred_supplier_id",
-            sa.Uuid(as_uuid=True),
-            sa.ForeignKey("suppliers.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
+        sa.Column("preferred_supplier_id", sa.Uuid(as_uuid=True), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_material_preferred_supplier",
+        "material_library", "suppliers",
+        ["preferred_supplier_id"], ["id"],
+        ondelete="SET NULL",
     )
 
 
 def downgrade():
+    op.drop_constraint("fk_material_preferred_supplier", "material_library", type_="foreignkey")
     op.drop_column("material_library", "preferred_supplier_id")
