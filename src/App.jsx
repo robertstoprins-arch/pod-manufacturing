@@ -14,13 +14,13 @@ import SettingsPage from './pages/Settings'
 import QuotesPage from './pages/Quotes'
 import SuppliersPage from './pages/Suppliers'
 import SupplierRespond from './pages/SupplierRespond'
+import ClientQuoteView from './pages/ClientQuoteView'
 import { apiFetch } from './api/client'
 
 export default function App() {
-  // Public route — no auth required
-  if (window.location.pathname.startsWith('/rfq-respond/')) {
-    return <SupplierRespond />
-  }
+  // Public routes — no auth required
+  if (window.location.pathname.startsWith('/rfq-respond/')) return <SupplierRespond />
+  if (window.location.pathname.startsWith('/quote-view/')) return <ClientQuoteView />
   const [page, setPage] = useState('dashboard')
   const [warming, setWarming] = useState(false)
 

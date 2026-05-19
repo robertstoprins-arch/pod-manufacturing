@@ -40,6 +40,7 @@ from app.api.clients import router as clients_router
 from app.api.quotes import router as quotes_router
 from app.api.suppliers import router as suppliers_router
 from app.api.rfq_respond import router_quotes as rfq_quotes_router, router_public as rfq_public_router
+from app.api.quote_portal import router_internal as portal_internal_router, router_public as portal_public_router
 
 app = FastAPI(
     title="Pod Manufacturing API",
@@ -84,6 +85,8 @@ app.include_router(quotes_router)
 app.include_router(suppliers_router)
 app.include_router(rfq_quotes_router)
 app.include_router(rfq_public_router)
+app.include_router(portal_internal_router)
+app.include_router(portal_public_router)
 
 
 @app.get("/ping", tags=["health"])

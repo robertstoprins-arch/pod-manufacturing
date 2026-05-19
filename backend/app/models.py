@@ -437,6 +437,12 @@ class Quote(Base):
     follow_up_at            = Column(DateTime(timezone=True))
     last_followed_up_at     = Column(DateTime(timezone=True))
     accepted_revision_locked = Column(Boolean, nullable=False, default=False)
+    client_token            = Column(Uuid(as_uuid=True), unique=True, nullable=True)
+    client_token_expires_at = Column(DateTime(timezone=True))
+    client_viewed_at        = Column(DateTime(timezone=True))
+    client_responded_at     = Column(DateTime(timezone=True))
+    client_response         = Column(String(30))
+    client_response_note    = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_now)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 

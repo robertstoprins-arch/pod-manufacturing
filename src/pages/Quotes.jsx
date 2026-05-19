@@ -205,6 +205,8 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [showSendModal, setShowSendModal] = useState(false)
   const [rfqResponses, setRfqResponses] = useState(null)
   const [responsesLoading, setResponsesLoading] = useState(false)
+  const [clientLink, setClientLink] = useState(quote.client_token ? `${window.location.origin}/quote-view/${quote.client_token}` : null)
+  const [generatingLink, setGeneratingLink] = useState(false)
   const [rfqView, setRfqView] = useState('bom')   // 'bom' | 'comparison'
   const [comparison, setComparison] = useState(null)
   const [compLoading, setCompLoading] = useState(false)
@@ -278,6 +280,24 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     URL.revokeObjectURL(url)
   }
 
+  async function generateClientLink() {
+    setGeneratingLink(true)
+    try {
+      const data = await apiFetch(`/quotes/${quote.id}/client-link`, {
+        method: 'POST',
+        body: JSON.stringify({ expires_days: 30 }),
+      })
+      const link = `${window.location.origin}/quote-view/${data.token}`
+      setClientLink(link)
+      setQuote(q => ({ ...q, client_token: data.token }))
+      onUpdated({ ...quote, client_token: data.token })
+    } catch (e) {
+      setErr(e.message ?? 'Failed to generate link')
+    } finally {
+      setGeneratingLink(false)
+    }
+  }
+
   async function loadResponses() {
     setResponsesLoading(true)
     try {
@@ -338,6 +358,35 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
           {quote.notes && (
             <div className="mt-2 bg-gray-50 rounded p-3 text-xs text-gray-600 whitespace-pre-wrap">{quote.notes}</div>
           )}
+
+          {/* Client portal */}
+          <div className="mt-3 border border-gray-100 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold text-gray-700">Client Quote Portal</div>
+                <div className="text-[11px] text-gray-400 mt-0.5">Private link for client to view and accept this quote</div>
+              </div>
+              <Btn small onClick={generateClientLink} disabled={generatingLink}>
+                {generatingLink ? 'Generating…' : clientLink ? 'Regenerate Link' : 'Generate Link'}
+              </Btn>
+            </div>
+            {clientLink && (
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] text-blue-600 bg-blue-50 rounded px-2 py-1 flex-1 truncate">{clientLink}</code>
+                <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(clientLink)}>Copy</Btn>
+              </div>
+            )}
+            {quote.client_viewed_at && (
+              <div className="text-[11px] text-gray-500">
+                Viewed: {formatDate(quote.client_viewed_at)}
+                {quote.client_responded_at && (
+                  <span> · Response: <span className={`font-medium ${quote.client_response === 'accepted' ? 'text-green-600' : quote.client_response === 'declined' ? 'text-red-500' : 'text-amber-600'}`}>
+                    {quote.client_response === 'accepted' ? 'Accepted' : quote.client_response === 'declined' ? 'Declined' : 'Changes Requested'}
+                  </span></span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
