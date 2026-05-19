@@ -165,6 +165,164 @@ def list_rfq_responses(quote_id: uuid.UUID, db: Db):
     )
 
 
+@router_quotes.get("/{quote_id}/rfq/comparison")
+def get_rfq_comparison(quote_id: uuid.UUID, db: Db):
+    """
+    Side-by-side comparison of all responded supplier RFQ requests for a quote.
+
+    Returns:
+    - lines: one row per original item, with each supplier's price/lead
+    - suppliers: ordered list of responding supplier names + totals
+    - cheapest_total: supplier name with lowest overall total
+    - margin: if quote has total_ex_vat, shows diff vs cheapest total
+    """
+    quote = _get_or_404(db, quote_id)
+
+    responded = (
+        db.query(RfqRequest)
+        .filter(RfqRequest.quote_id == quote_id, RfqRequest.status == "responded")
+        .order_by(RfqRequest.responded_at)
+        .all()
+    )
+
+    if not responded:
+        return {
+            "has_responses": False,
+            "suppliers": [],
+            "lines": [],
+            "totals": {},
+            "cheapest_total_supplier": None,
+            "quote_total_ex_vat": float(quote.total_ex_vat) if quote.total_ex_vat else None,
+            "margin": None,
+        }
+
+    # Build index: {line_id -> {supplier_name -> response_line}}
+    all_line_ids: list[str] = []
+    seen_line_ids: set[str] = set()
+    supplier_names = [r.supplier_name for r in responded]
+
+    # Collect all line_ids in order they appear across supplier items_json
+    for req in responded:
+        for item in (req.items_json or []):
+            lid = str(item.get("line_id", ""))
+            if lid and lid not in seen_line_ids:
+                all_line_ids.append(lid)
+                seen_line_ids.add(lid)
+
+    # Build lookup: supplier_name -> {line_id -> RfqResponseLine}
+    supplier_line_map: dict[str, dict[str, object]] = {}
+    item_meta: dict[str, dict] = {}  # line_id -> {description, unit, element_type}
+
+    for req in responded:
+        supplier_line_map[req.supplier_name] = {
+            line.line_id: line for line in req.response_lines
+        }
+        for item in (req.items_json or []):
+            lid = str(item.get("line_id", ""))
+            if lid and lid not in item_meta:
+                item_meta[lid] = {
+                    "description": item.get("description", ""),
+                    "unit": item.get("unit", ""),
+                    "quantity": item.get("quantity"),
+                    "element_type": item.get("element_type", ""),
+                    "estimated_unit_price": item.get("estimated_unit_price"),
+                    "estimated_line_cost": item.get("estimated_line_cost"),
+                    "currency": item.get("currency", quote.currency or "EUR"),
+                }
+
+    # Build line rows
+    lines = []
+    for lid in all_line_ids:
+        meta = item_meta.get(lid, {})
+        supplier_cells = {}
+        prices = []
+        for sname in supplier_names:
+            rline = supplier_line_map.get(sname, {}).get(lid)
+            if rline:
+                cell = {
+                    "unit_price": float(rline.unit_price) if rline.unit_price is not None else None,
+                    "total_price": float(rline.total_price) if rline.total_price is not None else None,
+                    "lead_time_days": rline.lead_time_days,
+                    "availability": rline.availability,
+                    "substitute_offered": rline.substitute_offered,
+                    "notes": rline.notes,
+                    "currency": rline.currency or quote.currency or "EUR",
+                }
+                if rline.unit_price is not None:
+                    prices.append((sname, float(rline.unit_price)))
+            else:
+                cell = None
+            supplier_cells[sname] = cell
+
+        cheapest_supplier = min(prices, key=lambda x: x[1])[0] if len(prices) > 1 else None
+
+        lines.append({
+            "line_id": lid,
+            "description": meta.get("description", ""),
+            "unit": meta.get("unit", ""),
+            "quantity": meta.get("quantity"),
+            "element_type": meta.get("element_type", ""),
+            "estimated_unit_price": meta.get("estimated_unit_price"),
+            "estimated_line_cost": meta.get("estimated_line_cost"),
+            "suppliers": supplier_cells,
+            "cheapest_supplier": cheapest_supplier,
+        })
+
+    # Compute per-supplier totals
+    totals: dict[str, float | None] = {}
+    for req in responded:
+        t = float(req.response_total) if req.response_total is not None else None
+        if t is None:
+            # Sum from response lines
+            s = sum(
+                float(l.total_price)
+                for l in req.response_lines
+                if l.total_price is not None
+            )
+            t = round(s, 2) if s else None
+        totals[req.supplier_name] = t
+
+    valid_totals = {k: v for k, v in totals.items() if v is not None}
+    cheapest_total_supplier = min(valid_totals, key=lambda k: valid_totals[k]) if valid_totals else None
+    cheapest_total = valid_totals.get(cheapest_total_supplier) if cheapest_total_supplier else None
+
+    # Margin calculation
+    margin = None
+    if cheapest_total is not None and quote.total_ex_vat is not None:
+        quoted = float(quote.total_ex_vat)
+        margin = {
+            "quoted_ex_vat": quoted,
+            "cheapest_procurement_total": cheapest_total,
+            "gross_margin": round(quoted - cheapest_total, 2),
+            "gross_margin_pct": round((quoted - cheapest_total) / quoted * 100, 1) if quoted else None,
+        }
+
+    # Supplier summary rows
+    supplier_summary = []
+    for req in responded:
+        supplier_summary.append({
+            "supplier_name": req.supplier_name,
+            "supplier_email": req.supplier_email,
+            "status": req.status,
+            "responded_at": req.responded_at.isoformat() if req.responded_at else None,
+            "response_currency": req.response_currency or quote.currency or "EUR",
+            "response_notes": req.response_notes,
+            "response_valid_until": req.response_valid_until.isoformat() if req.response_valid_until else None,
+            "total": totals.get(req.supplier_name),
+            "is_cheapest": req.supplier_name == cheapest_total_supplier,
+        })
+
+    return {
+        "has_responses": True,
+        "suppliers": supplier_summary,
+        "lines": lines,
+        "totals": totals,
+        "cheapest_total_supplier": cheapest_total_supplier,
+        "quote_total_ex_vat": float(quote.total_ex_vat) if quote.total_ex_vat else None,
+        "margin": margin,
+    }
+
+
 @router_quotes.delete("/{quote_id}/rfq/requests/{request_id}", status_code=204)
 def delete_rfq_request(quote_id: uuid.UUID, request_id: uuid.UUID, db: Db):
     req = db.query(RfqRequest).filter(

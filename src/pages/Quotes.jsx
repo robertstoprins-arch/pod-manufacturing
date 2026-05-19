@@ -205,6 +205,10 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [showSendModal, setShowSendModal] = useState(false)
   const [rfqResponses, setRfqResponses] = useState(null)
   const [responsesLoading, setResponsesLoading] = useState(false)
+  const [rfqView, setRfqView] = useState('bom')   // 'bom' | 'comparison'
+  const [comparison, setComparison] = useState(null)
+  const [compLoading, setCompLoading] = useState(false)
+  const [compErr, setCompErr] = useState('')
 
   useEffect(() => {
     apiFetch(`/quotes/${quote.id}/events`).then(setEvents).catch(() => {})
@@ -281,6 +285,19 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
       setRfqResponses(data)
     } catch (_) {}
     finally { setResponsesLoading(false) }
+  }
+
+  async function loadComparison() {
+    setCompLoading(true)
+    setCompErr('')
+    try {
+      const data = await apiFetch(`/quotes/${quote.id}/rfq/comparison`)
+      setComparison(data)
+    } catch (e) {
+      setCompErr(e.message ?? 'Failed to load comparison')
+    } finally {
+      setCompLoading(false)
+    }
   }
 
   const tabs = ['details', 'status', 'events', ...(quote.pod_spec_id ? ['rfq'] : [])]
@@ -394,75 +411,101 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                 </div>
               </div>
 
-              {/* Warnings */}
-              {rfq.spec_summary?.warnings?.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
-                  <p className="text-[11px] font-medium text-amber-700">BOM warnings</p>
-                  {rfq.spec_summary.warnings.map((w, i) => (
-                    <p key={i} className="text-[11px] text-amber-600">· {w}</p>
-                  ))}
-                </div>
-              )}
-
-              {/* Supplier groups */}
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {rfq.supplier_groups.map(group => (
-                  <div key={group.supplier_name} className="border border-gray-100 rounded-lg overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-gray-700">{group.supplier_name}</span>
-                      {group.estimated_subtotal != null && (
-                        <span className="text-[11px] text-gray-500">
-                          est. {rfq.project.currency} {Number(group.estimated_subtotal).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                    <table className="w-full text-xs">
-                      <thead className="border-b border-gray-100">
-                        <tr>
-                          <th className="text-left px-4 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Material</th>
-                          <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
-                          <th className="text-left px-2 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
-                          <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Est. Cost</th>
-                          <th className="px-3 py-1.5"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.items.map(item => (
-                          <tr key={item.line_id} className="border-t border-gray-50">
-                            <td className="px-4 py-2 text-gray-800">{item.description}</td>
-                            <td className="px-3 py-2 text-right text-gray-600 font-mono">{item.quantity}</td>
-                            <td className="px-2 py-2 text-gray-400">{item.unit}</td>
-                            <td className="px-3 py-2 text-right text-gray-600">
-                              {item.estimated_line_cost != null
-                                ? `${item.currency} ${Number(item.estimated_line_cost).toLocaleString()}`
-                                : <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className="px-3 py-2">
-                              {item.required_evidence?.length > 0 && (
-                                <span className="text-[10px] text-amber-500 font-medium">
-                                  ⚠ {item.required_evidence.join(', ')}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+              {/* BOM / Comparison toggle */}
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+                {[['bom', 'BOM'], ['comparison', 'Compare Responses']].map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => { setRfqView(v); if (v === 'comparison' && !comparison) loadComparison() }}
+                    className={`text-xs px-3 py-1 rounded-md transition-colors ${rfqView === v ? 'bg-white text-gray-900 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
 
-              {/* Responses panel */}
-              <RfqResponsesPanel
-                quoteId={quote.id}
-                responses={rfqResponses}
-                loading={responsesLoading}
-                onLoad={loadResponses}
-                onDelete={async (reqId) => {
-                  await apiFetch(`/quotes/${quote.id}/rfq/requests/${reqId}`, { method: 'DELETE' })
-                  loadResponses()
-                }}
-              />
+              {/* BOM view */}
+              {rfqView === 'bom' && (
+                <>
+                  {/* Warnings */}
+                  {rfq.spec_summary?.warnings?.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                      <p className="text-[11px] font-medium text-amber-700">BOM warnings</p>
+                      {rfq.spec_summary.warnings.map((w, i) => (
+                        <p key={i} className="text-[11px] text-amber-600">· {w}</p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                    {rfq.supplier_groups.map(group => (
+                      <div key={group.supplier_name} className="border border-gray-100 rounded-lg overflow-hidden">
+                        <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-700">{group.supplier_name}</span>
+                          {group.estimated_subtotal != null && (
+                            <span className="text-[11px] text-gray-500">
+                              est. {rfq.project.currency} {Number(group.estimated_subtotal).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        <table className="w-full text-xs">
+                          <thead className="border-b border-gray-100">
+                            <tr>
+                              <th className="text-left px-4 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Material</th>
+                              <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
+                              <th className="text-left px-2 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
+                              <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Est. Cost</th>
+                              <th className="px-3 py-1.5"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.items.map(item => (
+                              <tr key={item.line_id} className="border-t border-gray-50">
+                                <td className="px-4 py-2 text-gray-800">{item.description}</td>
+                                <td className="px-3 py-2 text-right text-gray-600 font-mono">{item.quantity}</td>
+                                <td className="px-2 py-2 text-gray-400">{item.unit}</td>
+                                <td className="px-3 py-2 text-right text-gray-600">
+                                  {item.estimated_line_cost != null
+                                    ? `${item.currency} ${Number(item.estimated_line_cost).toLocaleString()}`
+                                    : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {item.required_evidence?.length > 0 && (
+                                    <span className="text-[10px] text-amber-500 font-medium">
+                                      ⚠ {item.required_evidence.join(', ')}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Responses panel */}
+                  <RfqResponsesPanel
+                    quoteId={quote.id}
+                    responses={rfqResponses}
+                    loading={responsesLoading}
+                    onLoad={loadResponses}
+                    onDelete={async (reqId) => {
+                      await apiFetch(`/quotes/${quote.id}/rfq/requests/${reqId}`, { method: 'DELETE' })
+                      loadResponses()
+                    }}
+                  />
+                </>
+              )}
+
+              {/* Comparison view */}
+              {rfqView === 'comparison' && (
+                <RfqComparisonView
+                  comparison={comparison}
+                  loading={compLoading}
+                  error={compErr}
+                  onReload={loadComparison}
+                  quoteCurrency={quote.currency}
+                />
+              )}
             </>
           )}
           {!rfq && !rfqLoading && !rfqErr && (
@@ -716,6 +759,155 @@ function RfqResponsesPanel({ quoteId, responses, loading, onLoad, onDelete }) {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── RFQ Comparison View ────────────────────────────────────────────────────────
+
+function RfqComparisonView({ comparison, loading, error, onReload, quoteCurrency }) {
+  if (loading) return <p className="text-xs text-gray-400 text-center py-8">Loading comparison…</p>
+  if (error) return <p className="text-xs text-red-500">{error}</p>
+
+  if (!comparison) return (
+    <div className="text-center py-8 space-y-2">
+      <p className="text-sm text-gray-500">Compare supplier responses side-by-side.</p>
+      <Btn small onClick={onReload}>Load Comparison</Btn>
+    </div>
+  )
+
+  if (!comparison.has_responses) return (
+    <div className="text-center py-8 space-y-1">
+      <p className="text-sm text-gray-500">No supplier responses yet.</p>
+      <p className="text-xs text-gray-400">Send RFQ links to suppliers and wait for them to submit pricing.</p>
+      <Btn small variant="secondary" onClick={onReload}>Refresh</Btn>
+    </div>
+  )
+
+  const { suppliers, lines, totals, cheapest_total_supplier, margin } = comparison
+  const cur = quoteCurrency || 'EUR'
+
+  return (
+    <div className="space-y-3">
+      {/* Supplier totals bar */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${suppliers.length}, 1fr)` }}>
+        {suppliers.map(s => (
+          <div
+            key={s.supplier_name}
+            className={`rounded-lg p-3 border text-center ${s.is_cheapest ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100'}`}
+          >
+            <div className={`text-xs font-semibold truncate ${s.is_cheapest ? 'text-green-800' : 'text-gray-700'}`}>
+              {s.supplier_name}
+              {s.is_cheapest && <span className="ml-1 text-[10px] bg-green-100 text-green-700 px-1 rounded">Lowest</span>}
+            </div>
+            <div className={`text-sm font-bold mt-1 ${s.is_cheapest ? 'text-green-700' : 'text-gray-800'}`}>
+              {s.total != null ? `${s.response_currency || cur} ${Number(s.total).toLocaleString()}` : '—'}
+            </div>
+            {s.responded_at && (
+              <div className="text-[10px] text-gray-400 mt-0.5">{new Date(s.responded_at).toLocaleDateString()}</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Margin card */}
+      {margin && (
+        <div className={`rounded-lg px-4 py-3 border flex items-center justify-between ${margin.gross_margin >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-100'}`}>
+          <div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimated Margin (vs cheapest procurement)</div>
+            <div className={`text-sm font-bold mt-0.5 ${margin.gross_margin >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+              {cur} {Number(margin.gross_margin).toLocaleString()}
+              {margin.gross_margin_pct != null && (
+                <span className="text-xs font-normal ml-2">({margin.gross_margin_pct}%)</span>
+              )}
+            </div>
+          </div>
+          <div className="text-right text-[11px] text-gray-500 space-y-0.5">
+            <div>Quoted: <span className="font-medium text-gray-700">{cur} {Number(margin.quoted_ex_vat).toLocaleString()}</span></div>
+            <div>Procurement: <span className="font-medium text-gray-700">{cur} {Number(margin.cheapest_procurement_total).toLocaleString()}</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* Line comparison table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="text-left px-3 py-2 text-[10px] font-medium text-gray-400 uppercase sticky left-0 bg-gray-50 min-w-[160px]">Item</th>
+              <th className="text-right px-2 py-2 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
+              <th className="text-left px-2 py-2 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
+              <th className="text-right px-2 py-2 text-[10px] font-medium text-gray-400 uppercase">Est. Unit</th>
+              {suppliers.map(s => (
+                <th key={s.supplier_name} className={`text-right px-3 py-2 text-[10px] font-medium uppercase whitespace-nowrap ${s.is_cheapest ? 'text-green-600' : 'text-gray-400'}`}>
+                  {s.supplier_name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, i) => (
+              <tr key={line.line_id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                <td className="px-3 py-2 text-gray-800 sticky left-0 bg-inherit">
+                  <div className="font-medium leading-snug">{line.description}</div>
+                  {line.element_type && <div className="text-[10px] text-gray-400">{line.element_type}</div>}
+                </td>
+                <td className="px-2 py-2 text-right font-mono text-gray-600">{line.quantity ?? '—'}</td>
+                <td className="px-2 py-2 text-gray-400">{line.unit || '—'}</td>
+                <td className="px-2 py-2 text-right text-gray-400 font-mono">
+                  {line.estimated_unit_price != null ? Number(line.estimated_unit_price).toFixed(2) : '—'}
+                </td>
+                {suppliers.map(s => {
+                  const cell = line.suppliers?.[s.supplier_name]
+                  const isCheapest = line.cheapest_supplier === s.supplier_name
+                  return (
+                    <td key={s.supplier_name} className={`px-3 py-2 text-right font-mono ${isCheapest ? 'text-green-700 font-semibold' : 'text-gray-700'}`}>
+                      {cell ? (
+                        <div>
+                          <div>{cell.unit_price != null ? Number(cell.unit_price).toFixed(2) : '—'}</div>
+                          {cell.lead_time_days != null && (
+                            <div className="text-[10px] text-gray-400 font-normal">{cell.lead_time_days}d</div>
+                          )}
+                          {cell.substitute_offered && (
+                            <div className="text-[10px] text-amber-500 font-normal">sub</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-200">—</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            {/* Totals row */}
+            <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+              <td className="px-3 py-2 text-gray-700 sticky left-0 bg-gray-50" colSpan={4}>Total</td>
+              {suppliers.map(s => (
+                <td key={s.supplier_name} className={`px-3 py-2 text-right font-mono ${s.is_cheapest ? 'text-green-700' : 'text-gray-700'}`}>
+                  {totals[s.supplier_name] != null ? Number(totals[s.supplier_name]).toLocaleString() : '—'}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Supplier notes */}
+      {suppliers.some(s => s.response_notes) && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Supplier notes</p>
+          {suppliers.filter(s => s.response_notes).map(s => (
+            <div key={s.supplier_name} className="text-xs text-gray-600">
+              <span className="font-medium">{s.supplier_name}:</span> {s.response_notes}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <Btn small variant="secondary" onClick={onReload}>Refresh</Btn>
+      </div>
     </div>
   )
 }
