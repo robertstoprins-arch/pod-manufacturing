@@ -348,13 +348,34 @@ def _compute_and_respond(
 # ── Materials endpoints ───────────────────────────────────────────────────────
 
 def _enrich_material(mat: MaterialLibrary, db: Session) -> MaterialOut:
-    out = MaterialOut.model_validate(mat, from_attributes=True)
+    data = {
+        "id": mat.id,
+        "name": mat.name,
+        "manufacturer": mat.manufacturer,
+        "supplier_name": mat.supplier_name,
+        "supplier_ref": mat.supplier_ref,
+        "supplier_url": mat.supplier_url,
+        "datasheet_url": mat.datasheet_url,
+        "dop_url": mat.dop_url,
+        "price_source_url": mat.price_source_url,
+        "price_checked_at": mat.price_checked_at,
+        "evidence_status": mat.evidence_status,
+        "evidence_notes": mat.evidence_notes,
+        "evidence_category": mat.evidence_category,
+        "lambda_W_mK": mat.lambda_W_mK,
+        "density_kg_m3": mat.density_kg_m3,
+        "fire_euroclass": mat.fire_euroclass,
+        "spec_ref": mat.spec_ref,
+        "unit": mat.unit,
+        "properties": mat.properties,
+        "preferred_supplier_id": str(mat.preferred_supplier_id) if mat.preferred_supplier_id else None,
+        "preferred_supplier_name": None,
+    }
     if mat.preferred_supplier_id:
         supplier = db.get(Supplier, mat.preferred_supplier_id)
         if supplier:
-            out.preferred_supplier_id = str(mat.preferred_supplier_id)
-            out.preferred_supplier_name = supplier.name
-    return out
+            data["preferred_supplier_name"] = supplier.name
+    return MaterialOut(**data)
 
 
 @router.get("/materials", response_model=list[MaterialOut])
@@ -365,16 +386,10 @@ def list_materials(db: Db):
 
 @router.get("/materials/{material_id}", response_model=MaterialOut)
 def get_material(material_id: int, db: Db):
-    try:
-        mat = db.get(MaterialLibrary, material_id)
-        if mat is None:
-            raise HTTPException(status_code=404, detail="Material not found.")
-        return _enrich_material(mat, db)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        import traceback
-        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+    mat = db.get(MaterialLibrary, material_id)
+    if mat is None:
+        raise HTTPException(status_code=404, detail="Material not found.")
+    return _enrich_material(mat, db)
 
 
 @router.patch("/materials/{material_id}/evidence", response_model=MaterialOut)
@@ -432,14 +447,7 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
     db.commit()
     db.refresh(mat)
 
-    # Build response — enrich with preferred supplier name
-    out = MaterialOut.model_validate(mat, from_attributes=True)
-    if mat.preferred_supplier_id:
-        supplier = db.get(Supplier, mat.preferred_supplier_id)
-        if supplier:
-            out.preferred_supplier_id = str(mat.preferred_supplier_id)
-            out.preferred_supplier_name = supplier.name
-    return out
+    return _enrich_material(mat, db)
 
 
 class MaterialCreateIn(BaseModel):
