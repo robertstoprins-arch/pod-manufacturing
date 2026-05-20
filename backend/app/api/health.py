@@ -80,6 +80,28 @@ def env_debug():
     }
 
 
+@router.get("/debug/db-schema")
+def db_schema_check(db: Session = Depends(get_db)):
+    """Check actual DB columns on material_library and alembic version."""
+    try:
+        cols = db.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='material_library' ORDER BY ordinal_position"
+        )).fetchall()
+        alembic_ver = db.execute(text("SELECT version_num FROM alembic_version")).fetchall()
+        fks = db.execute(text(
+            "SELECT constraint_name FROM information_schema.table_constraints "
+            "WHERE table_name='material_library' AND constraint_type='FOREIGN KEY'"
+        )).fetchall()
+        return {
+            "columns": [r[0] for r in cols],
+            "alembic_versions": [r[0] for r in alembic_ver],
+            "foreign_keys": [r[0] for r in fks],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.get("/health")
 def health_check(db: Session = Depends(get_db)):
     try:
