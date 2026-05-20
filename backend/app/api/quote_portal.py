@@ -150,7 +150,7 @@ def get_client_quote(token: uuid.UUID, db: Db):
 # ── Public: client responds ───────────────────────────────────────────────────
 
 @router_public.post("/view/{token}/respond", response_model=ClientQuoteOut)
-def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):
+def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C901
     quote = db.query(Quote).filter(Quote.client_token == token).first()
     if not quote:
         raise HTTPException(404, "This link is invalid or has expired")
@@ -172,18 +172,18 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):
         if not quote.accepted_at:
             quote.accepted_at = now
         quote.accepted_revision_locked = True
-        _add_event(db, quote, "accepted", quote.status, "accepted",
+        _add_event(db, quote, "accepted", quote.status,
                    f"Client accepted quote via portal. {body.note or ''}", None)
     elif body.action == "declined":
         if quote.status not in ("lost",):
             quote.status = "lost"
             if not quote.lost_at:
                 quote.lost_at = now
-        _add_event(db, quote, "client_declined_quote", quote.status, quote.status,
+        _add_event(db, quote, "client_declined_quote", quote.status,
                    f"Client declined via portal. {body.note or ''}", None)
     else:
         # changes_requested — stay in current status, just log
-        _add_event(db, quote, "client_requested_changes", quote.status, quote.status,
+        _add_event(db, quote, "client_requested_changes", quote.status,
                    f"Client requested changes via portal. {body.note or ''}", None)
 
     db.commit()
