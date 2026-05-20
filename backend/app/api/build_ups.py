@@ -365,10 +365,16 @@ def list_materials(db: Db):
 
 @router.get("/materials/{material_id}", response_model=MaterialOut)
 def get_material(material_id: int, db: Db):
-    mat = db.get(MaterialLibrary, material_id)
-    if mat is None:
-        raise HTTPException(status_code=404, detail="Material not found.")
-    return _enrich_material(mat, db)
+    try:
+        mat = db.get(MaterialLibrary, material_id)
+        if mat is None:
+            raise HTTPException(status_code=404, detail="Material not found.")
+        return _enrich_material(mat, db)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
 
 
 @router.patch("/materials/{material_id}/evidence", response_model=MaterialOut)
