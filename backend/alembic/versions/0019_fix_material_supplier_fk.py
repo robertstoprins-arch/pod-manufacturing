@@ -6,7 +6,6 @@ Create Date: 2026-05-20
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import inspect
 
 revision = "0019"
 down_revision = "0018"
@@ -16,19 +15,26 @@ depends_on = None
 
 def upgrade():
     bind = op.get_bind()
-    insp = inspect(bind)
 
-    # Add column if it somehow doesn't exist (paranoia)
-    existing_cols = [c["name"] for c in insp.get_columns("material_library")]
-    if "preferred_supplier_id" not in existing_cols:
+    # Check if column exists
+    col_exists = bind.execute(sa.text(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name='material_library' AND column_name='preferred_supplier_id'"
+    )).fetchone()
+
+    if not col_exists:
         op.add_column(
             "material_library",
             sa.Column("preferred_supplier_id", sa.Uuid(as_uuid=True), nullable=True),
         )
 
-    # Add FK constraint if it doesn't exist
-    existing_fks = [fk["name"] for fk in insp.get_foreign_keys("material_library")]
-    if "fk_material_preferred_supplier" not in existing_fks:
+    # Check if FK constraint exists
+    fk_exists = bind.execute(sa.text(
+        "SELECT 1 FROM information_schema.table_constraints "
+        "WHERE table_name='material_library' AND constraint_name='fk_material_preferred_supplier'"
+    )).fetchone()
+
+    if not fk_exists:
         op.create_foreign_key(
             "fk_material_preferred_supplier",
             "material_library", "suppliers",
@@ -39,7 +45,9 @@ def upgrade():
 
 def downgrade():
     bind = op.get_bind()
-    insp = inspect(bind)
-    existing_fks = [fk["name"] for fk in insp.get_foreign_keys("material_library")]
-    if "fk_material_preferred_supplier" in existing_fks:
+    fk_exists = bind.execute(sa.text(
+        "SELECT 1 FROM information_schema.table_constraints "
+        "WHERE table_name='material_library' AND constraint_name='fk_material_preferred_supplier'"
+    )).fetchone()
+    if fk_exists:
         op.drop_constraint("fk_material_preferred_supplier", "material_library", type_="foreignkey")
