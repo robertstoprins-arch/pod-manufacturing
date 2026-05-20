@@ -80,6 +80,23 @@ def env_debug():
     }
 
 
+@router.get("/debug/material-test")
+def material_test(db: Session = Depends(get_db)):
+    """Raw SQL fetch of material 1 + table existence check."""
+    try:
+        row = db.execute(text("SELECT id, name, preferred_supplier_id FROM material_library WHERE id=1")).fetchone()
+        tables = db.execute(text(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name"
+        )).fetchall()
+        return {
+            "material": {"id": row[0], "name": row[1], "preferred_supplier_id": str(row[2]) if row[2] else None},
+            "tables": [r[0] for r in tables],
+        }
+    except Exception as exc:
+        import traceback
+        return {"error": str(exc), "trace": traceback.format_exc()}
+
+
 @router.get("/debug/db-schema")
 def db_schema_check(db: Session = Depends(get_db)):
     """Check actual DB columns on material_library and alembic version."""
