@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { useApi } from '../api/useApi'
 import BuildUpLayerPreview from './BuildUpLayerPreview'
 import CostSummary from './CostSummary'
@@ -132,6 +133,7 @@ function Select({ value, onChange, options }) {
 
 export default function PodDesigner() {
   const api = useApi()
+  const { getToken } = useAuth()
   // Geometry + drawings
   const [form, setForm]           = useState(DEFAULT_FORM)
   const [drawings, setDrawings]   = useState(null)
@@ -406,11 +408,15 @@ export default function PodDesigner() {
   // ── PDF Review Pack ──────────────────────────────────────────────────────────
   const _fetchPdf = async (endpoint, payload, filename) => {
     const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+    const token = await getToken()
     let res
     try {
       res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(payload),
       })
     } catch (netErr) {
@@ -487,9 +493,13 @@ export default function PodDesigner() {
         ...mfrMeta,
       }
       const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+      const token = await getToken()
       const res = await fetch(`${API_BASE}/drawings/manufacture-plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(payload),
       })
       if (!res.ok) {

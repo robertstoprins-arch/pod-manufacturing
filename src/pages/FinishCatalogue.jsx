@@ -1,6 +1,24 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+async function authFetch(url, opts = {}, token) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts.headers,
+    },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `HTTP ${res.status}`)
+  }
+  if (res.status === 204) return null
+  return res.json()
+}
 
 const CATEGORIES = [
   'external_cladding', 'internal_paint', 'internal_timber_finish', 'flooring',
@@ -128,6 +146,7 @@ function CustomerCardPreview({ item, onClose }) {
 // â”€â”€ Edit / Create modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function EditModal({ item, onClose, onSaved }) {
   const isNew = !item.id
+  const { getToken } = useAuth()
   const [form, setForm] = useState(() => isNew ? { ...EMPTY_ITEM } : itemToForm(item))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -143,16 +162,8 @@ function EditModal({ item, onClose, onSaved }) {
       const payload = formToPayload(form)
       const method = isNew ? 'POST' : 'PUT'
       const url = isNew ? `${API}/finish-catalogue` : `${API}/finish-catalogue/${item.id}`
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || `HTTP ${res.status}`)
-      }
-      const saved = await res.json()
+      const token = await getToken()
+      const saved = await authFetch(url, { method, body: JSON.stringify(payload) }, token)
       onSaved(saved, isNew)
     } catch (e) {
       setError(e.message)
@@ -401,6 +412,7 @@ const EMPTY_DRAFT = {
 }
 
 function ResearchPanel({ onApproved }) {
+  const { getToken } = useAuth()
   const [form, setForm] = useState({ ...EMPTY_DRAFT })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -415,14 +427,13 @@ function ResearchPanel({ onApproved }) {
   const loadDrafts = useCallback(async () => {
     setLoadingDrafts(true)
     try {
-      const res = await fetch(`${API}/finish-catalogue?is_active=false&customer_visible=false`)
-      const data = await res.json()
-      // Show only items that look like drafts (code starts with draft_ or internal_only)
+      const token = await getToken()
+      const data = await authFetch(`${API}/finish-catalogue?is_active=false&customer_visible=false`, {}, token)
       setDrafts(data.filter(i => i.internal_only || i.code.startsWith('draft_')))
     } finally {
       setLoadingDrafts(false)
     }
-  }, [])
+  }, [getToken])
 
   useEffect(() => { loadDrafts() }, [loadDrafts])
 
@@ -436,16 +447,8 @@ function ResearchPanel({ onApproved }) {
         ...form,
         unit_cost: form.unit_cost === '' ? null : parseFloat(form.unit_cost),
       }
-      const res = await fetch(`${API}/finish-catalogue/draft`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || `HTTP ${res.status}`)
-      }
-      const saved = await res.json()
+      const token = await getToken()
+      const saved = await authFetch(`${API}/finish-catalogue/draft`, { method: 'POST', body: JSON.stringify(payload) }, token)
       setSuccess(`Draft created: ${saved.code}`)
       setForm({ ...EMPTY_DRAFT })
       setDrafts(prev => [saved, ...prev])
@@ -459,9 +462,8 @@ function ResearchPanel({ onApproved }) {
   async function approveDraft(item) {
     setApproving(item.id)
     try {
-      const res = await fetch(`${API}/finish-catalogue/${item.id}/approve`, { method: 'POST' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const updated = await res.json()
+      const token = await getToken()
+      const updated = await authFetch(`${API}/finish-catalogue/${item.id}/approve`, { method: 'POST' }, token)
       setDrafts(prev => prev.filter(d => d.id !== item.id))
       onApproved(updated)
     } finally {
@@ -654,6 +656,7 @@ function ResearchPanel({ onApproved }) {
 
 // â”€â”€ Main page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function FinishCatalogue() {
+  const { getToken } = useAuth()
   const [mainTab, setMainTab] = useState('catalogue')  // 'catalogue' | 'research'
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -676,25 +679,27 @@ export default function FinishCatalogue() {
       params.set('is_active', 'true')   // admin shows active by default; we'll also fetch inactive
 
       // Fetch both active and inactive for admin view
-      const [activeRes, inactiveRes] = await Promise.all([
-        fetch(`${API}/finish-catalogue?is_active=true${filterCat ? `&category=${filterCat}` : ''}${filterVisible !== '' ? `&customer_visible=${filterVisible}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
-        fetch(`${API}/finish-catalogue?is_active=false${filterCat ? `&category=${filterCat}` : ''}${filterVisible !== '' ? `&customer_visible=${filterVisible}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+      const token = await getToken()
+      const qs = `${filterCat ? `&category=${filterCat}` : ''}${filterVisible !== '' ? `&customer_visible=${filterVisible}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`
+      const [active, inactive] = await Promise.all([
+        authFetch(`${API}/finish-catalogue?is_active=true${qs}`, {}, token),
+        authFetch(`${API}/finish-catalogue?is_active=false${qs}`, {}, token),
       ])
-      const [active, inactive] = await Promise.all([activeRes.json(), inactiveRes.json()])
       let all = [...active, ...inactive]
       if (filterApproval) all = all.filter(i => i.image_approval_status === filterApproval)
       setItems(all)
     } finally {
       setLoading(false)
     }
-  }, [filterCat, filterVisible, filterApproval, search])
+  }, [filterCat, filterVisible, filterApproval, search, getToken])
 
   useEffect(() => { load() }, [load])
 
   async function deactivate(item) {
     setDeactivating(item.id)
     try {
-      await fetch(`${API}/finish-catalogue/${item.id}`, { method: 'DELETE' })
+      const token = await getToken()
+      await authFetch(`${API}/finish-catalogue/${item.id}`, { method: 'DELETE' }, token)
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_active: false } : i))
     } finally {
       setDeactivating(null)

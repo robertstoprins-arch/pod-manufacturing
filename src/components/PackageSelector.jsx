@@ -7,6 +7,7 @@
  *   onSelections  â€” callback(newSelections) fired after successful PATCH
  */
 import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -198,6 +199,7 @@ function CategoryGroup({ category, packages, selectedPackageIds, onToggle }) {
 // â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function PackageSelector({ specId, selections, onSelections }) {
+  const { getToken } = useAuth()
   const [packages, setPackages]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
@@ -269,9 +271,10 @@ export default function PackageSelector({ specId, selections, onSelections }) {
     setSaveError(null)
 
     try {
+      const token = await getToken()
       const res = await fetch(`${API}/pod-specs/${specId}/finishes`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
