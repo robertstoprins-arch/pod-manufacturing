@@ -787,8 +787,8 @@ def generate_review_pack(spec_id: int, body: ReviewPackIn, db: Db):
         bom = get_pod_spec_bom(spec_id, db)
 
         materials_orm = db.query(MaterialLibrary).order_by(MaterialLibrary.id).all()
-        from app.api.build_ups import MaterialOut
-        materials = [MaterialOut.model_validate(m).model_dump() for m in materials_orm]
+        from app.api.build_ups import _enrich_material
+        materials = [_enrich_material(m, db).model_dump() for m in materials_orm]
 
         allowances_orm = db.query(ProvisionalAllowance).all()
         allowances = [
