@@ -25,6 +25,8 @@ def _run_migrations():
 async def lifespan(app):
     _run_migrations()
     yield
+from fastapi import Depends
+from app.auth import require_auth
 from app.api.health import router as health_router
 from app.api.pods import router as pods_router
 from app.api.drawings import router as drawings_router
@@ -41,6 +43,8 @@ from app.api.quotes import router as quotes_router
 from app.api.suppliers import router as suppliers_router
 from app.api.rfq_respond import router_quotes as rfq_quotes_router, router_public as rfq_public_router
 from app.api.quote_portal import router_internal as portal_internal_router, router_public as portal_public_router
+
+_auth = [Depends(require_auth)]
 
 app = FastAPI(
     title="Pod Manufacturing API",
@@ -69,24 +73,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health_router)
-app.include_router(pods_router)
-app.include_router(drawings_router)
-app.include_router(workspaces_router)
-app.include_router(build_ups_router)
-app.include_router(pod_specs_router)
-app.include_router(material_prices_router)
-app.include_router(provisional_allowances_router)
-app.include_router(settings_router)
-app.include_router(finish_catalogue_router)
-app.include_router(finish_packages_router)
-app.include_router(clients_router)
-app.include_router(quotes_router)
-app.include_router(suppliers_router)
-app.include_router(rfq_quotes_router)
-app.include_router(rfq_public_router)
-app.include_router(portal_internal_router)
-app.include_router(portal_public_router)
+app.include_router(health_router)                                           # public: /ping, /health, /env-debug
+app.include_router(pods_router,                    dependencies=_auth)
+app.include_router(drawings_router,                dependencies=_auth)
+app.include_router(workspaces_router,              dependencies=_auth)
+app.include_router(build_ups_router,               dependencies=_auth)
+app.include_router(pod_specs_router,               dependencies=_auth)
+app.include_router(material_prices_router,         dependencies=_auth)
+app.include_router(provisional_allowances_router,  dependencies=_auth)
+app.include_router(settings_router,                dependencies=_auth)
+app.include_router(finish_catalogue_router,        dependencies=_auth)
+app.include_router(finish_packages_router,         dependencies=_auth)
+app.include_router(clients_router,                 dependencies=_auth)
+app.include_router(quotes_router,                  dependencies=_auth)
+app.include_router(suppliers_router,               dependencies=_auth)
+app.include_router(rfq_quotes_router,              dependencies=_auth)  # internal RFQ management
+app.include_router(rfq_public_router)                                       # public: supplier respond token
+app.include_router(portal_internal_router,         dependencies=_auth)  # internal: generate client link
+app.include_router(portal_public_router)                                    # public: client view + respond
 
 
 @app.get("/ping", tags=["health"])

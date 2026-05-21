@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ function NewQuoteModal({ onClose, onCreated, clients }) {
         expires_at: form.expires_at || null,
         notes: form.notes || null,
       }
-      const q = await apiFetch('/quotes', { method: 'POST', body: JSON.stringify(body) })
+      const q = await api('/quotes', { method: 'POST', body: JSON.stringify(body) })
       onCreated(q)
     } catch (e) {
       setErr(e.message ?? 'Save failed')
@@ -213,20 +213,20 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [compErr, setCompErr] = useState('')
 
   useEffect(() => {
-    apiFetch(`/quotes/${quote.id}/events`).then(setEvents).catch(() => {})
+    api(`/quotes/${quote.id}/events`).then(setEvents).catch(() => {})
   }, [quote.id])
 
   async function handleStatusUpdate() {
     setSaving(true)
     setErr('')
     try {
-      const updated = await apiFetch(`/quotes/${quote.id}/status`, {
+      const updated = await api(`/quotes/${quote.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus, note: statusNote || null, lost_reason: lostReason || null }),
       })
       setQuote(updated)
       onUpdated(updated)
-      const evs = await apiFetch(`/quotes/${quote.id}/events`)
+      const evs = await api(`/quotes/${quote.id}/events`)
       setEvents(evs)
       setStatusNote('')
     } catch (e) {
@@ -240,12 +240,12 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     if (!manualNote.trim()) return
     setSaving(true)
     try {
-      await apiFetch(`/quotes/${quote.id}/events`, {
+      await api(`/quotes/${quote.id}/events`, {
         method: 'POST',
         body: JSON.stringify({ event_type: 'note', note: manualNote }),
       })
       setManualNote('')
-      const evs = await apiFetch(`/quotes/${quote.id}/events`)
+      const evs = await api(`/quotes/${quote.id}/events`)
       setEvents(evs)
     } catch (e) {
       setErr(e.message ?? 'Failed to add note')
@@ -260,7 +260,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     setRfqLoading(true)
     setRfqErr('')
     try {
-      const data = await apiFetch(`/quotes/${quote.id}/rfq`)
+      const data = await api(`/quotes/${quote.id}/rfq`)
       setRfq(data)
     } catch (e) {
       setRfqErr(e.message ?? 'Failed to generate RFQ')
@@ -283,7 +283,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   async function generateClientLink() {
     setGeneratingLink(true)
     try {
-      const data = await apiFetch(`/quotes/${quote.id}/client-link`, {
+      const data = await api(`/quotes/${quote.id}/client-link`, {
         method: 'POST',
         body: JSON.stringify({ expires_days: 30 }),
       })
@@ -301,7 +301,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   async function loadResponses() {
     setResponsesLoading(true)
     try {
-      const data = await apiFetch(`/quotes/${quote.id}/rfq/responses`)
+      const data = await api(`/quotes/${quote.id}/rfq/responses`)
       setRfqResponses(data)
     } catch (_) {}
     finally { setResponsesLoading(false) }
@@ -311,7 +311,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     setCompLoading(true)
     setCompErr('')
     try {
-      const data = await apiFetch(`/quotes/${quote.id}/rfq/comparison`)
+      const data = await api(`/quotes/${quote.id}/rfq/comparison`)
       setComparison(data)
     } catch (e) {
       setCompErr(e.message ?? 'Failed to load comparison')
@@ -538,7 +538,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                     loading={responsesLoading}
                     onLoad={loadResponses}
                     onDelete={async (reqId) => {
-                      await apiFetch(`/quotes/${quote.id}/rfq/requests/${reqId}`, { method: 'DELETE' })
+                      await api(`/quotes/${quote.id}/rfq/requests/${reqId}`, { method: 'DELETE' })
                       loadResponses()
                     }}
                   />
@@ -600,7 +600,7 @@ function SendRfqModal({ rfq, quoteId, onClose, onSent }) {
     setSending(true)
     setErr('')
     try {
-      const result = await apiFetch(`/quotes/${quoteId}/rfq/send`, {
+      const result = await api(`/quotes/${quoteId}/rfq/send`, {
         method: 'POST',
         body: JSON.stringify({ targets, expires_days: expiresDays }),
       })
@@ -977,6 +977,7 @@ const TABS = ['all', 'draft', 'sent', 'follow_up_due', 'accepted', 'lost', 'expi
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function QuotesPage() {
+  const api = useApi()
   const [quotes, setQuotes] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -986,8 +987,8 @@ export default function QuotesPage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch('/quotes'),
-      apiFetch('/clients'),
+      api('/quotes'),
+      api('/clients'),
     ]).then(([q, c]) => {
       setQuotes(q)
       setClients(c)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 
 const CURRENCIES = ['EUR', 'GBP', 'USD', 'CHF', 'NOK', 'SEK', 'DKK']
 const VAT_MODES  = [
@@ -45,13 +45,14 @@ function NumberInput({ value, onChange, min, max, step = 0.1, suffix }) {
 }
 
 export default function SettingsPage() {
+  const api = useApi()
   const [form, setForm]     = useState(null)
   const [saved, setSaved]   = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState(null)
 
   useEffect(() => {
-    apiFetch('/settings')
+    api('/settings')
       .then(d => setForm(d))
       .catch(e => setError(e.message))
   }, [])
@@ -62,7 +63,7 @@ export default function SettingsPage() {
     setSaving(true)
     setError(null)
     try {
-      const updated = await apiFetch('/settings', {
+      const updated = await api('/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

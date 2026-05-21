@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 import BuildUpLayerPreview from './BuildUpLayerPreview'
 import CostSummary from './CostSummary'
 import FinishSelector from './FinishSelector'
@@ -131,6 +131,7 @@ function Select({ value, onChange, options }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function PodDesigner() {
+  const api = useApi()
   // Geometry + drawings
   const [form, setForm]           = useState(DEFAULT_FORM)
   const [drawings, setDrawings]   = useState(null)
@@ -197,8 +198,8 @@ export default function PodDesigner() {
 
   // ── On mount ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    apiFetch('/build-ups').then(setBuildUps).catch(console.error)
-    apiFetch('/pod-specs').then(setPodSpecs).catch(console.error)
+    api('/build-ups').then(setBuildUps).catch(console.error)
+    api('/pod-specs').then(setPodSpecs).catch(console.error)
   }, [])
 
   // ── Form helpers ────────────────────────────────────────────────────────────
@@ -273,7 +274,7 @@ export default function PodDesigner() {
         floor_u_value: floorBu?.u_value > 0 ? floorBu.u_value : null,
         roof_u_value:  roofBu?.u_value  > 0 ? roofBu.u_value  : null,
       }
-      const result = await apiFetch('/drawings/all', {
+      const result = await api('/drawings/all', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
@@ -339,18 +340,18 @@ export default function PodDesigner() {
       }
       let saved
       if (specId) {
-        saved = await apiFetch(`/pod-specs/${specId}`, {
+        saved = await api(`/pod-specs/${specId}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         })
       } else {
-        saved = await apiFetch('/pod-specs', {
+        saved = await api('/pod-specs', {
           method: 'POST',
           body: JSON.stringify(payload),
         })
         setSpecId(saved.id)
       }
-      const list = await apiFetch('/pod-specs')
+      const list = await api('/pod-specs')
       setPodSpecs(list)
     } catch (e) {
       setSaveError(e.message)
@@ -365,8 +366,8 @@ export default function PodDesigner() {
     setDeleting(true)
     setDeleteError(null)
     try {
-      await apiFetch(`/pod-specs/${deleteTarget.id}`, { method: 'DELETE' })
-      const list = await apiFetch('/pod-specs')
+      await api(`/pod-specs/${deleteTarget.id}`, { method: 'DELETE' })
+      const list = await api('/pod-specs')
       setPodSpecs(list)
       // If we just deleted the currently loaded spec, reset to blank
       if (specId === deleteTarget.id) {
@@ -392,7 +393,7 @@ export default function PodDesigner() {
     if (!specId) return
     setBomLoading(true)
     try {
-      const data = await apiFetch(`/pod-specs/${specId}/bom`)
+      const data = await api(`/pod-specs/${specId}/bom`)
       setBom(data)
       setShowBom(true)
     } catch (e) {

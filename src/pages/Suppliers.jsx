@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 
 // ── Categories ─────────────────────────────────────────────────────────────────
 
@@ -114,8 +114,8 @@ function SupplierFormModal({ initial, onClose, onSaved }) {
         category: form.category || null,
       }
       const result = isEdit
-        ? await apiFetch(`/suppliers/${initial.id}`, { method: 'PUT', body: JSON.stringify(body) })
-        : await apiFetch('/suppliers', { method: 'POST', body: JSON.stringify(body) })
+        ? await api(`/suppliers/${initial.id}`, { method: 'PUT', body: JSON.stringify(body) })
+        : await api('/suppliers', { method: 'POST', body: JSON.stringify(body) })
       onSaved(result, isEdit)
     } catch (e) {
       setErr(e.message ?? 'Save failed')
@@ -246,7 +246,7 @@ function ImportModal({ onClose, onImported }) {
         notes: r.notes || null,
         is_active: true,
       }))
-      const res = await apiFetch('/suppliers/import', { method: 'POST', body: JSON.stringify(body) })
+      const res = await api('/suppliers/import', { method: 'POST', body: JSON.stringify(body) })
       setResult(res)
       setStep('result')
       onImported(res.suppliers)
@@ -395,6 +395,7 @@ function InfoRow({ label, children }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function SuppliersPage() {
+  const api = useApi()
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showArchived, setShowArchived] = useState(false)
@@ -407,7 +408,7 @@ export default function SuppliersPage() {
 
   function load(includeArchived) {
     setLoading(true)
-    apiFetch(`/suppliers?include_archived=${includeArchived}`)
+    api(`/suppliers?include_archived=${includeArchived}`)
       .then(setSuppliers)
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -432,13 +433,13 @@ export default function SuppliersPage() {
   }
 
   async function handleArchive(s) {
-    const updated = await apiFetch(`/suppliers/${s.id}/archive`, { method: 'PATCH' })
+    const updated = await api(`/suppliers/${s.id}/archive`, { method: 'PATCH' })
     setSuppliers(prev => showArchived ? prev.map(x => x.id === s.id ? updated : x) : prev.filter(x => x.id !== s.id))
     setViewing(null)
   }
 
   async function handleReactivate(s) {
-    const updated = await apiFetch(`/suppliers/${s.id}/reactivate`, { method: 'PATCH' })
+    const updated = await api(`/suppliers/${s.id}/reactivate`, { method: 'PATCH' })
     setSuppliers(prev => prev.map(x => x.id === s.id ? updated : x))
     setViewing(updated)
   }

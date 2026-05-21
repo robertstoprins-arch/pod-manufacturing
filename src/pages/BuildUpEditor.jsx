@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 import BuildUpLayerPreview from '../components/BuildUpLayerPreview'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -108,6 +108,7 @@ function TierBadge({ tier }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BuildUpEditor() {
+  const api = useApi()
   const [materials, setMaterials] = useState([])
   const [buildUps, setBuildUps] = useState([])
   const [buildUpsLoading, setBuildUpsLoading] = useState(true)
@@ -138,8 +139,8 @@ export default function BuildUpEditor() {
 
   // ── Load materials + build-up list on mount ──────────────────────────────
   useEffect(() => {
-    apiFetch('/materials').then(setMaterials).catch(console.error)
-    apiFetch('/build-ups')
+    api('/materials').then(setMaterials).catch(console.error)
+    api('/build-ups')
       .then(setBuildUps)
       .catch(console.error)
       .finally(() => setBuildUpsLoading(false))
@@ -149,14 +150,14 @@ export default function BuildUpEditor() {
   useEffect(() => {
     const ids = [...new Set(layers.map(l => l.material_id).filter(Boolean))]
     ids.forEach(id => {
-      apiFetch(`/materials/${id}/prices`)
+      api(`/materials/${id}/prices`)
         .then(prices => setMatPrices(p => ({ ...p, [id]: prices })))
         .catch(() => {})
     })
   }, [layers])
 
   const loadPrices = (materialId) =>
-    apiFetch(`/materials/${materialId}/prices`)
+    api(`/materials/${materialId}/prices`)
       .then(prices => setMatPrices(p => ({ ...p, [materialId]: prices })))
       .catch(() => {})
 
@@ -172,7 +173,7 @@ export default function BuildUpEditor() {
       if (valid.length === 0) { setResult(null); return }
       setValidating(true)
       try {
-        const r = await apiFetch('/build-ups/validate', {
+        const r = await api('/build-ups/validate', {
           method: 'POST',
           body: JSON.stringify({
             element_type: currentElementType,
@@ -244,7 +245,7 @@ export default function BuildUpEditor() {
   // ── Load existing build-up ───────────────────────────────────────────────
   const loadBuildUp = async (id) => {
     try {
-      const bu = await apiFetch(`/build-ups/${id}`)
+      const bu = await api(`/build-ups/${id}`)
       setActiveBuId(bu.id)
       setName(bu.name)
       setElementType(bu.element_type || 'ExternalWall')
@@ -293,8 +294,8 @@ export default function BuildUpEditor() {
     setDeleting(true)
     setDeleteError(null)
     try {
-      await apiFetch(`/build-ups/${activeBuId}`, { method: 'DELETE' })
-      const updated = await apiFetch('/build-ups')
+      await api(`/build-ups/${activeBuId}`, { method: 'DELETE' })
+      const updated = await api('/build-ups')
       setBuildUps(updated)
       // Reset to blank new build-up
       setActiveBuId(null)
@@ -341,19 +342,19 @@ export default function BuildUpEditor() {
 
       let saved
       if (activeBuId) {
-        saved = await apiFetch(`/build-ups/${activeBuId}`, {
+        saved = await api(`/build-ups/${activeBuId}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         })
       } else {
-        saved = await apiFetch('/build-ups', {
+        saved = await api('/build-ups', {
           method: 'POST',
           body: JSON.stringify(payload),
         })
         setActiveBuId(saved.id)
       }
       setResult(saved)
-      const list = await apiFetch('/build-ups')
+      const list = await api('/build-ups')
       setBuildUps(list)
     } catch (e) {
       setSaveError(e.message)
@@ -796,12 +797,12 @@ export default function BuildUpEditor() {
                     onEdit={() => setPriceEditing(isEditing ? null : matId)}
                     onSaved={() => { loadPrices(matId); setPriceEditing(null) }}
                     onDeleted={(pid) => {
-                      apiFetch(`/material-prices/${pid}`, { method: 'DELETE' })
+                      api(`/material-prices/${pid}`, { method: 'DELETE' })
                         .then(() => loadPrices(matId))
                         .catch(() => {})
                     }}
                     onSetDefault={(pid) => {
-                      apiFetch(`/material-prices/${pid}/set-default`, { method: 'POST' })
+                      api(`/material-prices/${pid}/set-default`, { method: 'POST' })
                         .then(() => loadPrices(matId))
                         .catch(() => {})
                     }}
@@ -1011,7 +1012,7 @@ function MaterialPriceRow({ mat, defaultPrice, allPrices, isEditing, onEdit, onS
     }
     setSaving(true); setErr(null)
     try {
-      await apiFetch(`/materials/${mat.id}/prices`, {
+      await api(`/materials/${mat.id}/prices`, {
         method: 'POST',
         body: JSON.stringify({ ...form, price_per_unit: Number(form.price_per_unit) }),
       })

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 
 // ── Package group definitions ─────────────────────────────────────────────────
 // provisional_allowance: the one client-facing value shown.
@@ -387,6 +387,7 @@ function FinishCostGroup({ groupName, lines }) {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export default function CostSummary({ bom, packages, onPackages, specId, finishSelections }) {
+  const api = useApi()
   const [allowances, setAllowances] = useState([])
   const [provError, setProvError]   = useState(null)
   const [included, setIncluded]     = useState({})
@@ -406,7 +407,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   useEffect(() => {
-    apiFetch('/settings').then(s => setSettings(s)).catch(() => {})
+    api('/settings').then(s => setSettings(s)).catch(() => {})
   }, [])
 
   const computeSellingPrice = (cost, s) => {
@@ -428,14 +429,14 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
   const saveSettings = () => {
     if (!settingsDraft) return
     setSettingsSaving(true)
-    apiFetch('/settings', { method: 'PUT', body: JSON.stringify(settingsDraft) })
+    api('/settings', { method: 'PUT', body: JSON.stringify(settingsDraft) })
       .then(s => { setSettings(s); setSettingsOpen(false) })
       .catch(() => {})
       .finally(() => setSettingsSaving(false))
   }
 
   useEffect(() => {
-    apiFetch('/provisional-allowances')
+    api('/provisional-allowances')
       .then(data => {
         setAllowances(data)
         setIncluded(Object.fromEntries(data.map(a => [a.id, a.is_included_by_default])))
@@ -455,7 +456,7 @@ export default function CostSummary({ bom, packages, onPackages, specId, finishS
   useEffect(() => {
     if (!specId) { setFinishLines([]); setFinishTotal(0); return }
     setFinishLoading(true)
-    apiFetch(`/pod-specs/${specId}/finish-cost`)
+    api(`/pod-specs/${specId}/finish-cost`)
       .then(data => {
         setFinishLines(data.lines ?? [])
         setFinishTotal(data.total ?? 0)

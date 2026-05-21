@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { apiFetch } from '../api/client'
+import { useApi } from '../api/useApi'
 
 // ── Evidence badge ─────────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ function AddMaterialModal({ onClose, onAdded }) {
         currency:       form.currency || 'EUR',
         properties: { material_class: form.material_class },
       }
-      const created = await apiFetch('/materials', {
+      const created = await api('/materials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -226,7 +226,7 @@ function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
       const payload = { ...form }
       if (payload.density_kg_m3 !== '') payload.density_kg_m3 = parseFloat(payload.density_kg_m3)
       else delete payload.density_kg_m3
-      const updated = await apiFetch(`/materials/${mat.id}/evidence`, {
+      const updated = await api(`/materials/${mat.id}/evidence`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -325,7 +325,7 @@ function DeleteConfirm({ mat, onClose, onDeleted }) {
   const confirm = async () => {
     setBusy(true); setError(null)
     try {
-      await apiFetch(`/materials/${mat.id}`, { method: 'DELETE' })
+      await api(`/materials/${mat.id}`, { method: 'DELETE' })
       onDeleted(mat.id)
     } catch (e) { setError(e.message); setBusy(false) }
   }
@@ -490,6 +490,7 @@ function MaterialRow({ m, onEdit, onDelete }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function MaterialLibraryPage() {
+  const api = useApi()
   const [materials,   setMaterials]   = useState([])
   const [suppliers,   setSuppliers]   = useState([])
   const [editTarget,  setEditTarget]  = useState(null)
@@ -500,8 +501,8 @@ export default function MaterialLibraryPage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch('/materials'),
-      apiFetch('/suppliers'),
+      api('/materials'),
+      api('/suppliers'),
     ]).then(([mats, sups]) => {
       setMaterials(mats)
       setSuppliers(sups)
