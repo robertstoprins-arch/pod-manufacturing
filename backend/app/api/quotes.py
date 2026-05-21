@@ -132,6 +132,12 @@ class QuoteOut(BaseModel):
     accepted_revision_locked: bool
     created_at: datetime | None
     updated_at: datetime | None
+    client_token: uuid.UUID | None
+    client_token_expires_at: datetime | None
+    client_viewed_at: datetime | None
+    client_responded_at: datetime | None
+    client_response: str | None
+    client_response_note: str | None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

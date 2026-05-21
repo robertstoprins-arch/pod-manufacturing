@@ -77,11 +77,9 @@ def generate_client_link(quote_id: uuid.UUID, body: ClientLinkIn, db: Db):
     now = _now()
     quote.client_token = uuid.uuid4()
     quote.client_token_expires_at = now + timedelta(days=body.expires_days)
-    # Reset previous response tracking on regeneration
-    quote.client_viewed_at = None
-    quote.client_responded_at = None
-    quote.client_response = None
-    quote.client_response_note = None
+    # Only reset response tracking if the quote hasn't been responded to yet
+    if not quote.client_responded_at:
+        quote.client_viewed_at = None
 
     _add_event(db, quote, "client_link_generated", None,
                f"Client link generated, expires in {body.expires_days} days", None)
