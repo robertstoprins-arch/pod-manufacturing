@@ -15,12 +15,14 @@ import QuotesPage from './pages/Quotes'
 import SuppliersPage from './pages/Suppliers'
 import SupplierRespond from './pages/SupplierRespond'
 import ClientQuoteView from './pages/ClientQuoteView'
+import GetQuote from './pages/GetQuote'
 import { apiFetch } from './api/client'
 
 export default function App() {
   // Public routes — no auth required
   if (window.location.pathname.startsWith('/rfq-respond/')) return <SupplierRespond />
   if (window.location.pathname.startsWith('/quote-view/')) return <ClientQuoteView />
+  if (window.location.pathname === '/get-quote') return <GetQuote />
   const [page, setPage] = useState('dashboard')
   const [warming, setWarming] = useState(false)
 
