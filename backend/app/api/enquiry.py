@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -50,7 +50,7 @@ class EnquiryIn(BaseModel):
     # Contact
     first_name:   str
     last_name:    str
-    email:        EmailStr
+    email:        str
     phone:        str | None = None
     company_name: str | None = None
 
