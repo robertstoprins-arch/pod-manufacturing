@@ -73,6 +73,7 @@ const EMPTY_FORM = {
 }
 
 function AddMaterialModal({ onClose, onAdded }) {
+  const api = useApi()
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -185,6 +186,7 @@ const EVIDENCE_STATUS_OPTIONS = [
 ]
 
 function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
+  const api = useApi()
   const [form, setForm] = useState({
     manufacturer:             mat.manufacturer             ?? '',
     preferred_supplier_id:    mat.preferred_supplier_id   ?? '',
@@ -319,6 +321,7 @@ function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
 // ── Delete confirmation ────────────────────────────────────────────────────────
 
 function DeleteConfirm({ mat, onClose, onDeleted }) {
+  const api = useApi()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 

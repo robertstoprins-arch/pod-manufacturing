@@ -92,6 +92,7 @@ const EMPTY = {
 }
 
 function SupplierFormModal({ initial, onClose, onSaved }) {
+  const api = useApi()
   const [form, setForm] = useState(initial ? {
     ...EMPTY,
     ...initial,
@@ -177,6 +178,7 @@ function parseCSV(text) {
 }
 
 function ImportModal({ onClose, onImported }) {
+  const api = useApi()
   const [step, setStep] = useState('upload') // upload | map | preview | result
   const [csvText, setCsvText] = useState('')
   const [parsed, setParsed] = useState(null)

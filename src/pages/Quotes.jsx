@@ -113,6 +113,7 @@ const EMPTY_FORM = {
 }
 
 function NewQuoteModal({ onClose, onCreated, clients }) {
+  const api = useApi()
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -190,6 +191,7 @@ function formatDate(iso) {
 }
 
 function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) {
+  const api = useApi()
   const [quote, setQuote] = useState(initialQuote)
   const [events, setEvents] = useState([])
   const [tab, setTab] = useState('details')
@@ -584,6 +586,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
 const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin
 
 function SendRfqModal({ rfq, quoteId, onClose, onSent }) {
+  const api = useApi()
   const [targets, setTargets] = useState(
     rfq.supplier_groups.map(g => ({ supplier_name: g.supplier_name, supplier_email: '', items: g.items }))
   )
