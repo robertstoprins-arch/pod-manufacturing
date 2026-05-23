@@ -486,6 +486,8 @@ class RfqRequest(Base):
     response_currency      = Column(String(10))
     response_valid_until   = Column(DateTime(timezone=True))
     response_total         = Column(Numeric(12, 2))
+    awarded_at     = Column(DateTime(timezone=True), nullable=True)
+    awarded_by     = Column(String(255), nullable=True)
     created_at     = Column(DateTime(timezone=True), default=_now)
 
     quote          = relationship("Quote", back_populates="rfq_requests")

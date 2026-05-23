@@ -639,6 +639,8 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                   error={compErr}
                   onReload={loadComparison}
                   quoteCurrency={quote.currency}
+                  quoteId={quote.id}
+                  api={api}
                 />
               )}
             </>
@@ -901,7 +903,9 @@ function RfqResponsesPanel({ quoteId, responses, loading, onLoad, onDelete }) {
 
 // ── RFQ Comparison View ────────────────────────────────────────────────────────
 
-function RfqComparisonView({ comparison, loading, error, onReload, quoteCurrency }) {
+function RfqComparisonView({ comparison, loading, error, onReload, quoteCurrency, quoteId, api }) {
+  const [awarding, setAwarding] = useState(null)  // rfq_request_id being processed
+
   if (loading) return <p className="text-xs text-gray-400 text-center py-8">Loading comparison…</p>
   if (error) return <p className="text-xs text-red-500">{error}</p>
 
@@ -922,6 +926,33 @@ function RfqComparisonView({ comparison, loading, error, onReload, quoteCurrency
 
   const { suppliers, lines, totals, cheapest_total_supplier, margin } = comparison
   const cur = quoteCurrency || 'EUR'
+  const anyAwarded = suppliers.some(s => s.is_awarded)
+
+  async function handleAward(s) {
+    if (!window.confirm(`Award this RFQ to ${s.supplier_name}?`)) return
+    setAwarding(s.rfq_request_id)
+    try {
+      await api(`/quotes/${quoteId}/rfq/requests/${s.rfq_request_id}/award`, { method: 'POST' })
+      await onReload()
+    } catch (e) {
+      alert(`Award failed: ${e.message}`)
+    } finally {
+      setAwarding(null)
+    }
+  }
+
+  async function handleUnaward(s) {
+    if (!window.confirm(`Remove award from ${s.supplier_name}?`)) return
+    setAwarding(s.rfq_request_id)
+    try {
+      await api(`/quotes/${quoteId}/rfq/requests/${s.rfq_request_id}/award`, { method: 'DELETE' })
+      await onReload()
+    } catch (e) {
+      alert(`Failed: ${e.message}`)
+    } finally {
+      setAwarding(null)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -930,18 +961,43 @@ function RfqComparisonView({ comparison, loading, error, onReload, quoteCurrency
         {suppliers.map(s => (
           <div
             key={s.supplier_name}
-            className={`rounded-lg p-3 border text-center ${s.is_cheapest ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100'}`}
+            className={`rounded-lg p-3 border text-center ${
+              s.is_awarded ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-300'
+              : s.is_cheapest ? 'bg-green-50 border-green-200'
+              : 'bg-gray-50 border-gray-100'
+            }`}
           >
-            <div className={`text-xs font-semibold truncate ${s.is_cheapest ? 'text-green-800' : 'text-gray-700'}`}>
+            <div className={`text-xs font-semibold truncate ${s.is_awarded ? 'text-blue-800' : s.is_cheapest ? 'text-green-800' : 'text-gray-700'}`}>
               {s.supplier_name}
-              {s.is_cheapest && <span className="ml-1 text-[10px] bg-green-100 text-green-700 px-1 rounded">Lowest</span>}
+              {s.is_awarded && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1 rounded">Awarded</span>}
+              {!s.is_awarded && s.is_cheapest && <span className="ml-1 text-[10px] bg-green-100 text-green-700 px-1 rounded">Lowest</span>}
             </div>
-            <div className={`text-sm font-bold mt-1 ${s.is_cheapest ? 'text-green-700' : 'text-gray-800'}`}>
+            <div className={`text-sm font-bold mt-1 ${s.is_awarded ? 'text-blue-700' : s.is_cheapest ? 'text-green-700' : 'text-gray-800'}`}>
               {s.total != null ? `${s.response_currency || cur} ${Number(s.total).toLocaleString()}` : '—'}
             </div>
             {s.responded_at && (
               <div className="text-[10px] text-gray-400 mt-0.5">{new Date(s.responded_at).toLocaleDateString()}</div>
             )}
+            <div className="mt-2">
+              {s.is_awarded ? (
+                <button
+                  onClick={() => handleUnaward(s)}
+                  disabled={awarding === s.rfq_request_id}
+                  className="text-[10px] text-blue-500 hover:text-blue-700 underline cursor-pointer disabled:opacity-40"
+                >
+                  {awarding === s.rfq_request_id ? 'Updating…' : 'Remove award'}
+                </button>
+              ) : (
+                <Btn
+                  small
+                  variant={s.is_cheapest && !anyAwarded ? 'success' : 'secondary'}
+                  onClick={() => handleAward(s)}
+                  disabled={awarding === s.rfq_request_id}
+                >
+                  {awarding === s.rfq_request_id ? 'Awarding…' : 'Award'}
+                </Btn>
+              )}
+            </div>
           </div>
         ))}
       </div>

@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Quote, RfqRequest, RfqResponseLine
+from app.models import Quote, QuoteEvent, RfqRequest, RfqResponseLine
 
 router_quotes = APIRouter(prefix="/quotes", tags=["rfq"])
 router_public = APIRouter(prefix="/rfq", tags=["rfq"])
@@ -59,6 +59,8 @@ class RfqRequestOut(BaseModel):
     response_currency: str | None
     response_valid_until: datetime | None
     response_total: float | None
+    awarded_at: datetime | None
+    awarded_by: str | None
     created_at: datetime | None
     response_lines: list["RfqResponseLineOut"]
 
@@ -180,7 +182,10 @@ def get_rfq_comparison(quote_id: uuid.UUID, db: Db):
 
     responded = (
         db.query(RfqRequest)
-        .filter(RfqRequest.quote_id == quote_id, RfqRequest.status == "responded")
+        .filter(
+            RfqRequest.quote_id == quote_id,
+            RfqRequest.status.in_(["responded", "awarded"]),
+        )
         .order_by(RfqRequest.responded_at)
         .all()
     )
@@ -301,6 +306,7 @@ def get_rfq_comparison(quote_id: uuid.UUID, db: Db):
     supplier_summary = []
     for req in responded:
         supplier_summary.append({
+            "rfq_request_id": str(req.id),
             "supplier_name": req.supplier_name,
             "supplier_email": req.supplier_email,
             "status": req.status,
@@ -310,6 +316,8 @@ def get_rfq_comparison(quote_id: uuid.UUID, db: Db):
             "response_valid_until": req.response_valid_until.isoformat() if req.response_valid_until else None,
             "total": totals.get(req.supplier_name),
             "is_cheapest": req.supplier_name == cheapest_total_supplier,
+            "is_awarded": req.status == "awarded",
+            "awarded_at": req.awarded_at.isoformat() if req.awarded_at else None,
         })
 
     return {
@@ -332,6 +340,54 @@ def delete_rfq_request(quote_id: uuid.UUID, request_id: uuid.UUID, db: Db):
     if not req:
         raise HTTPException(404, "RFQ request not found")
     db.delete(req)
+    db.commit()
+
+
+@router_quotes.post("/{quote_id}/rfq/requests/{request_id}/award", response_model=RfqRequestOut)
+def award_rfq_request(quote_id: uuid.UUID, request_id: uuid.UUID, db: Db):
+    req = db.query(RfqRequest).filter(
+        RfqRequest.id == request_id,
+        RfqRequest.quote_id == quote_id,
+    ).first()
+    if not req:
+        raise HTTPException(404, "RFQ request not found")
+    if req.status not in ("responded", "awarded"):
+        raise HTTPException(400, f"Cannot award a request with status '{req.status}' — supplier must have responded first")
+
+    req.status = "awarded"
+    req.awarded_at = _now()
+    req.awarded_by = "manufacturer"
+
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if quote:
+        total_str = f"{req.response_currency or ''} {float(req.response_total):,.2f}".strip() if req.response_total else "?"
+        db.add(QuoteEvent(
+            quote_id=quote_id,
+            event_type="supplier_awarded",
+            old_status=quote.status,
+            new_status=quote.status,
+            note=f"Awarded to {req.supplier_name} — total {total_str}",
+            created_by="internal",
+        ))
+
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+@router_quotes.delete("/{quote_id}/rfq/requests/{request_id}/award", status_code=204)
+def unaward_rfq_request(quote_id: uuid.UUID, request_id: uuid.UUID, db: Db):
+    req = db.query(RfqRequest).filter(
+        RfqRequest.id == request_id,
+        RfqRequest.quote_id == quote_id,
+    ).first()
+    if not req:
+        raise HTTPException(404, "RFQ request not found")
+    if req.status != "awarded":
+        raise HTTPException(400, "This request is not currently awarded")
+    req.status = "responded"
+    req.awarded_at = None
+    req.awarded_by = None
     db.commit()
 
 
