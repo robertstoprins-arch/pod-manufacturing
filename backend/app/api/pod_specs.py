@@ -111,6 +111,7 @@ class BomLineOut(BaseModel):
     supplier_name: str | None = None
     datasheet_url: str | None = None
     dop_url: str | None = None
+    material_id: int | None = None
 
 
 class BomOut(BaseModel):
@@ -622,6 +623,7 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                     supplier_name=price_mat.supplier_name,
                     datasheet_url=price_mat.datasheet_url,
                     dop_url=price_mat.dop_url,
+                    material_id=price_mat.id,
                 ))
 
     # ── Opening counts (for BomOut summary field) ─────────────────────────────

@@ -340,6 +340,7 @@ def get_quote_rfq(quote_id: uuid.UUID, db: Db):
                 "currency": line.currency or currency,
                 "datasheet_url": line.datasheet_url or None,
                 "dop_url": line.dop_url or None,
+                "material_id": line.material_id,
             })
             line_counter += 1
 

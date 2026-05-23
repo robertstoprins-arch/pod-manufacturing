@@ -204,6 +204,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [rfq, setRfq] = useState(null)
   const [rfqLoading, setRfqLoading] = useState(false)
   const [rfqErr, setRfqErr] = useState('')
+  const [rfqSuppliers, setRfqSuppliers] = useState([])
   const [showSendModal, setShowSendModal] = useState(false)
   const [rfqResponses, setRfqResponses] = useState(null)
   const [responsesLoading, setResponsesLoading] = useState(false)
@@ -300,8 +301,12 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     setRfqLoading(true)
     setRfqErr('')
     try {
-      const data = await api(`/quotes/${quote.id}/rfq`)
+      const [data, sups] = await Promise.all([
+        api(`/quotes/${quote.id}/rfq`),
+        rfqSuppliers.length ? Promise.resolve(rfqSuppliers) : api('/suppliers'),
+      ])
       setRfq(data)
+      if (sups !== rfqSuppliers) setRfqSuppliers(sups)
     } catch (e) {
       setRfqErr(e.message ?? 'Failed to generate RFQ')
     } finally {
@@ -571,11 +576,22 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                       ))}
                     </div>
                   )}
-                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+
+                  {/* No suppliers banner */}
+                  {rfq.total_suppliers === 0 && rfq.total_items === 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-700">
+                      <p className="font-medium mb-0.5">No suppliers assigned to these materials yet.</p>
+                      <p className="text-blue-500">Use the dropdown in each row below to assign a preferred supplier. The RFQ package will update automatically.</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                     {rfq.supplier_groups.map(group => (
-                      <div key={group.supplier_name} className="border border-gray-100 rounded-lg overflow-hidden">
-                        <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-700">{group.supplier_name}</span>
+                      <div key={group.supplier_name} className={`border rounded-lg overflow-hidden ${group.supplier_name === 'Unassigned' ? 'border-amber-200' : 'border-gray-100'}`}>
+                        <div className={`px-4 py-2 flex items-center justify-between ${group.supplier_name === 'Unassigned' ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                          <span className={`text-xs font-semibold ${group.supplier_name === 'Unassigned' ? 'text-amber-700' : 'text-gray-700'}`}>
+                            {group.supplier_name === 'Unassigned' ? 'Unassigned — pick a supplier below' : group.supplier_name}
+                          </span>
                           {group.estimated_subtotal != null && (
                             <span className="text-[11px] text-gray-500">
                               est. {rfq.project.currency} {Number(group.estimated_subtotal).toLocaleString()}
@@ -589,13 +605,18 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                               <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
                               <th className="text-left px-2 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
                               <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Est. Cost</th>
-                              <th className="px-3 py-1.5"></th>
+                              <th className="px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase text-left">Supplier</th>
                             </tr>
                           </thead>
                           <tbody>
                             {group.items.map(item => (
                               <tr key={item.line_id} className="border-t border-gray-50">
-                                <td className="px-4 py-2 text-gray-800">{item.description}</td>
+                                <td className="px-4 py-2 text-gray-800">
+                                  <div>{item.description}</div>
+                                  {item.required_evidence?.length > 0 && (
+                                    <div className="text-[10px] text-amber-500">⚠ {item.required_evidence.join(', ')}</div>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2 text-right text-gray-600 font-mono">{item.quantity}</td>
                                 <td className="px-2 py-2 text-gray-400">{item.unit}</td>
                                 <td className="px-3 py-2 text-right text-gray-600">
@@ -604,10 +625,31 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                                     : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2">
-                                  {item.required_evidence?.length > 0 && (
-                                    <span className="text-[10px] text-amber-500 font-medium">
-                                      ⚠ {item.required_evidence.join(', ')}
-                                    </span>
+                                  {item.material_id ? (
+                                    <select
+                                      defaultValue={group.supplier_name === 'Unassigned' ? '' : ''}
+                                      className="text-[11px] border border-gray-200 rounded px-1.5 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[130px]"
+                                      onChange={async e => {
+                                        const supplierId = e.target.value
+                                        if (!supplierId) return
+                                        try {
+                                          await api(`/materials/${item.material_id}`, {
+                                            method: 'PATCH',
+                                            body: JSON.stringify({ preferred_supplier_id: supplierId }),
+                                          })
+                                          await loadRfq()
+                                        } catch (err) {
+                                          alert(`Failed to assign supplier: ${err.message}`)
+                                        }
+                                      }}
+                                    >
+                                      <option value="">— assign supplier —</option>
+                                      {rfqSuppliers.filter(s => !s.archived).map(s => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-gray-300 text-[11px]">—</span>
                                   )}
                                 </td>
                               </tr>
