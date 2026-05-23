@@ -69,13 +69,13 @@ function SelectField({ label, value, onChange, options }) {
   )
 }
 
-function Btn({ onClick, children, variant = 'primary', disabled = false }) {
-  const base = 'px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-40'
+function Btn({ onClick, children, variant = 'primary', disabled = false, small = false }) {
+  const base = `${small ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm'} rounded font-medium cursor-pointer transition-all active:scale-95 active:brightness-90 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100`
   const variants = {
-    primary: 'bg-gray-900 text-white hover:bg-gray-700',
-    secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
-    danger: 'bg-red-50 text-red-600 hover:bg-red-100',
-    success: 'bg-green-600 text-white hover:bg-green-700',
+    primary:   'bg-gray-900 text-white hover:bg-gray-700 shadow-sm hover:shadow',
+    secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200 hover:border-gray-300',
+    danger:    'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200',
+    success:   'bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow',
   }
   return <button type="button" className={`${base} ${variants[variant]}`} onClick={onClick} disabled={disabled}>{children}</button>
 }
@@ -210,6 +210,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [clientLink, setClientLink] = useState(quote.client_token ? `${window.location.origin}/quote-view/${quote.client_token}` : null)
   const [generatingLink, setGeneratingLink] = useState(false)
   const [paymentUpdating, setPaymentUpdating] = useState(false)
+  const [invoiceDownloading, setInvoiceDownloading] = useState(false)
   const [rfqView, setRfqView] = useState('bom')   // 'bom' | 'comparison'
   const [comparison, setComparison] = useState(null)
   const [compLoading, setCompLoading] = useState(false)
@@ -278,6 +279,8 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   }
 
   async function downloadDepositInvoice() {
+    if (invoiceDownloading) return
+    setInvoiceDownloading(true)
     try {
       const blob = await api(`/quotes/${quote.id}/deposit-invoice.pdf`, { _blob: true })
       const url = URL.createObjectURL(blob)
@@ -288,6 +291,8 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
       URL.revokeObjectURL(url)
     } catch (e) {
       alert(`Failed to download invoice: ${e.message}`)
+    } finally {
+      setInvoiceDownloading(false)
     }
   }
 
@@ -428,7 +433,9 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Btn small variant="secondary" onClick={downloadDepositInvoice}>Download Invoice PDF</Btn>
+                <Btn small variant="secondary" onClick={downloadDepositInvoice} disabled={invoiceDownloading}>
+                  {invoiceDownloading ? 'Downloading…' : 'Download Invoice PDF'}
+                </Btn>
                 {quote.payment_status !== 'deposit_received' && quote.payment_status !== 'paid_in_full' && (
                   <Btn small onClick={handleMarkDepositReceived} disabled={paymentUpdating}>
                     {paymentUpdating ? 'Updating…' : 'Mark Deposit Received'}

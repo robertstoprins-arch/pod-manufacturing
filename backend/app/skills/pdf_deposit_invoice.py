@@ -214,7 +214,8 @@ def build_deposit_invoice(quote: dict, settings: dict) -> bytes:
     price_data = [[Paragraph(r[0], ST["tbl_cell"]),
                    Paragraph(r[1], ST["tbl_cell"])] for r in price_rows]
 
-    price_tbl = Table(price_data, colWidths=[CW * 0.75, CW * 0.25])
+    _pw = CW * 0.65  # price table lives inside right 65% of content width
+    price_tbl = Table(price_data, colWidths=[_pw * 0.68, _pw * 0.32])
     price_tbl.setStyle(_tbl([
         ("ALIGN",       (1,0),(1,-1),"RIGHT"),
         ("LINEABOVE",   (0,-1),(-1,-1), 1.5, NAVY),
@@ -227,7 +228,7 @@ def build_deposit_invoice(quote: dict, settings: dict) -> bytes:
     ]))
 
     # Right-align price table
-    price_wrap = Table([[None, price_tbl]], colWidths=[CW * 0.35, CW * 0.65])
+    price_wrap = Table([[None, price_tbl]], colWidths=[CW * 0.35, _pw])
     price_wrap.setStyle(_tbl([
         ("LEFTPADDING", (0,0),(-1,-1), 0),
         ("RIGHTPADDING",(0,0),(-1,-1), 0),
