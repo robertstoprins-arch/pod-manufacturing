@@ -400,3 +400,90 @@ def _required_evidence(line) -> list[str]:
     if not line.dop_url:
         needed.append("DoP")
     return needed
+
+
+# ── Deposit invoice PDF ───────────────────────────────────────────────────────
+
+@router.get("/{quote_id}/deposit-invoice.pdf")
+def get_deposit_invoice(quote_id: uuid.UUID, db: Db):
+    from fastapi.responses import StreamingResponse
+    import io
+    from app.models import AccountSettings
+    from app.skills.pdf_deposit_invoice import build_deposit_invoice
+
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if not quote:
+        raise HTTPException(404, "Quote not found")
+    if not quote.total_ex_vat and not quote.deposit_amount:
+        raise HTTPException(400, "Quote has no pricing — add total and deposit before generating invoice")
+
+    settings = db.query(AccountSettings).first()
+    settings_dict = {}
+    if settings:
+        settings_dict = {
+            "company_name":       settings.company_name,
+            "company_address":    settings.company_address,
+            "company_email":      settings.company_email,
+            "company_phone":      settings.company_phone,
+            "vat_number":         settings.vat_number,
+            "bank_name":          settings.bank_name,
+            "bank_account_name":  settings.bank_account_name,
+            "bank_iban":          settings.bank_iban,
+            "bank_bic":           settings.bank_bic,
+            "payment_terms_days": settings.payment_terms_days or 7,
+            "vat_rate_percent":   settings.vat_rate_percent or 21.0,
+        }
+
+    quote_dict = {
+        "id":              str(quote.id),
+        "title":           quote.title,
+        "quote_number":    quote.quote_number,
+        "client_name":     quote.client_name,
+        "currency":        quote.currency,
+        "total_ex_vat":    float(quote.total_ex_vat) if quote.total_ex_vat else None,
+        "total_inc_vat":   float(quote.total_inc_vat) if quote.total_inc_vat else None,
+        "deposit_percent": float(quote.deposit_percent) if quote.deposit_percent else None,
+        "deposit_amount":  float(quote.deposit_amount) if quote.deposit_amount else None,
+        "notes":           quote.notes,
+        "spec_summary":    quote.spec_snapshot,
+    }
+
+    pdf_bytes = build_deposit_invoice(quote_dict, settings_dict)
+
+    filename = f"deposit-invoice-{quote.quote_number or str(quote.id)[:8]}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Payment status ────────────────────────────────────────────────────────────
+
+VALID_PAYMENT_STATUSES = {"awaiting_deposit", "deposit_received", "paid_in_full", "overdue"}
+
+
+class PaymentStatusIn(BaseModel):
+    payment_status: str
+    note: str | None = None
+
+
+@router.patch("/{quote_id}/payment", response_model=QuoteOut)
+def update_payment_status(quote_id: uuid.UUID, body: PaymentStatusIn, db: Db):
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if not quote:
+        raise HTTPException(404, "Quote not found")
+    if body.payment_status not in VALID_PAYMENT_STATUSES:
+        raise HTTPException(400, f"payment_status must be one of: {', '.join(sorted(VALID_PAYMENT_STATUSES))}")
+
+    old_status = quote.payment_status
+    quote.payment_status = body.payment_status
+
+    note = body.note or f"Payment status set to: {body.payment_status}"
+    if body.payment_status == "deposit_received" and old_status != "deposit_received":
+        note = body.note or "Deposit received — production can proceed"
+
+    _add_event(db, quote, "payment_status_updated", quote.status, quote.status, note, "internal")
+    db.commit()
+    db.refresh(quote)
+    return quote

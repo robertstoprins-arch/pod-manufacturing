@@ -25,6 +25,18 @@ function Field({ label, hint, children }) {
   )
 }
 
+function TextInput({ value, onChange, placeholder = '' }) {
+  return (
+    <input
+      type="text"
+      value={value ?? ''}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+    />
+  )
+}
+
 function NumberInput({ value, onChange, min, max, step = 0.1, suffix }) {
   return (
     <div className="relative w-48">
@@ -171,6 +183,66 @@ export default function SettingsPage() {
               {ROUND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
+        </div>
+
+        {/* ── Company details ── */}
+        <div className="px-6 py-5 space-y-4">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Company Details</div>
+          <p className="text-xs text-gray-400 -mt-2">Used on deposit invoices sent to clients.</p>
+
+          <Field label="Company name">
+            <TextInput value={form.company_name} onChange={v => set('company_name', v)} placeholder="Top-R Solutions Ltd" />
+          </Field>
+          <Field label="Address" hint="Street, city, postcode, country">
+            <textarea
+              value={form.company_address ?? ''}
+              onChange={e => set('company_address', e.target.value)}
+              rows={3}
+              placeholder="123 Factory Lane&#10;Dublin 2&#10;Ireland"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Email">
+              <TextInput value={form.company_email} onChange={v => set('company_email', v)} placeholder="hello@yourcompany.com" />
+            </Field>
+            <Field label="Phone">
+              <TextInput value={form.company_phone} onChange={v => set('company_phone', v)} placeholder="+353 1 234 5678" />
+            </Field>
+          </div>
+          <Field label="VAT registration number">
+            <TextInput value={form.vat_number} onChange={v => set('vat_number', v)} placeholder="IE1234567X" />
+          </Field>
+        </div>
+
+        {/* ── Bank details ── */}
+        <div className="px-6 py-5 space-y-4">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Bank Details</div>
+          <p className="text-xs text-gray-400 -mt-2">Printed on deposit invoices so clients know where to send payment.</p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Account name">
+              <TextInput value={form.bank_account_name} onChange={v => set('bank_account_name', v)} placeholder="Top-R Solutions Ltd" />
+            </Field>
+            <Field label="Bank name">
+              <TextInput value={form.bank_name} onChange={v => set('bank_name', v)} placeholder="Bank of Ireland" />
+            </Field>
+          </div>
+          <Field label="IBAN">
+            <TextInput value={form.bank_iban} onChange={v => set('bank_iban', v)} placeholder="IE29 AIBK 9311 5212 3456 78" />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="BIC / SWIFT">
+              <TextInput value={form.bank_bic} onChange={v => set('bank_bic', v)} placeholder="AIBKIE2D" />
+            </Field>
+            <Field label="Payment terms (days)">
+              <NumberInput
+                value={form.payment_terms_days ?? 7}
+                onChange={v => set('payment_terms_days', v)}
+                min={1} max={90} step={1} suffix="days"
+              />
+            </Field>
+          </div>
         </div>
 
         {/* ── Live preview ── */}

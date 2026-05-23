@@ -209,6 +209,7 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [responsesLoading, setResponsesLoading] = useState(false)
   const [clientLink, setClientLink] = useState(quote.client_token ? `${window.location.origin}/quote-view/${quote.client_token}` : null)
   const [generatingLink, setGeneratingLink] = useState(false)
+  const [paymentUpdating, setPaymentUpdating] = useState(false)
   const [rfqView, setRfqView] = useState('bom')   // 'bom' | 'comparison'
   const [comparison, setComparison] = useState(null)
   const [compLoading, setCompLoading] = useState(false)
@@ -257,6 +258,38 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   }
 
   const clientName = clients.find(c => c.id === quote.client_id)?.name ?? quote.client_name ?? '—'
+
+  async function handleMarkDepositReceived() {
+    setPaymentUpdating(true)
+    try {
+      const updated = await api(`/quotes/${quote.id}/payment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ payment_status: 'deposit_received' }),
+      })
+      setQuote(updated)
+      onUpdated(updated)
+      const evs = await api(`/quotes/${quote.id}/events`)
+      setEvents(evs)
+    } catch (e) {
+      setErr(e.message ?? 'Failed to update payment status')
+    } finally {
+      setPaymentUpdating(false)
+    }
+  }
+
+  async function downloadDepositInvoice() {
+    try {
+      const blob = await api(`/quotes/${quote.id}/deposit-invoice.pdf`, { _blob: true })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `deposit-invoice-${quote.quote_number || quote.id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert(`Failed to download invoice: ${e.message}`)
+    }
+  }
 
   async function loadRfq() {
     setRfqLoading(true)
@@ -359,6 +392,50 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
           </div>
           {quote.notes && (
             <div className="mt-2 bg-gray-50 rounded p-3 text-xs text-gray-600 whitespace-pre-wrap">{quote.notes}</div>
+          )}
+
+          {/* Deposit & payment — shown when quote has pricing */}
+          {(quote.deposit_amount != null || quote.deposit_percent != null || quote.total_ex_vat != null) && (
+            <div className="mt-3 border border-gray-100 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-gray-700">Deposit & Payment</div>
+                  {quote.deposit_percent != null && (
+                    <div className="text-[11px] text-gray-400 mt-0.5">
+                      {quote.deposit_percent}% deposit ·{' '}
+                      {quote.deposit_amount != null
+                        ? `${quote.currency} ${Number(quote.deposit_amount).toLocaleString()}`
+                        : quote.total_ex_vat != null
+                          ? `${quote.currency} ${(Number(quote.total_ex_vat) * Number(quote.deposit_percent) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          : '—'}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  {quote.payment_status && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                      quote.payment_status === 'deposit_received' ? 'bg-green-50 text-green-700'
+                      : quote.payment_status === 'paid_in_full' ? 'bg-teal-50 text-teal-700'
+                      : quote.payment_status === 'overdue' ? 'bg-red-50 text-red-600'
+                      : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {quote.payment_status === 'deposit_received' ? 'Deposit Received'
+                        : quote.payment_status === 'paid_in_full' ? 'Paid in Full'
+                        : quote.payment_status === 'overdue' ? 'Overdue'
+                        : 'Awaiting Deposit'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Btn small variant="secondary" onClick={downloadDepositInvoice}>Download Invoice PDF</Btn>
+                {quote.payment_status !== 'deposit_received' && quote.payment_status !== 'paid_in_full' && (
+                  <Btn small onClick={handleMarkDepositReceived} disabled={paymentUpdating}>
+                    {paymentUpdating ? 'Updating…' : 'Mark Deposit Received'}
+                  </Btn>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Client portal */}

@@ -24,6 +24,16 @@ class SettingsOut(BaseModel):
     vat_rate_percent: float
     vat_mode: str
     round_to_nearest: int
+    company_name: str | None
+    company_address: str | None
+    company_email: str | None
+    company_phone: str | None
+    vat_number: str | None
+    bank_name: str | None
+    bank_account_name: str | None
+    bank_iban: str | None
+    bank_bic: str | None
+    payment_terms_days: int | None
 
     model_config = {"from_attributes": True}
 
@@ -34,6 +44,16 @@ class SettingsIn(BaseModel):
     vat_rate_percent: float = Field(ge=0, le=100)
     vat_mode: str = "excluded"
     round_to_nearest: int = Field(ge=0)
+    company_name: str | None = None
+    company_address: str | None = None
+    company_email: str | None = None
+    company_phone: str | None = None
+    vat_number: str | None = None
+    bank_name: str | None = None
+    bank_account_name: str | None = None
+    bank_iban: str | None = None
+    bank_bic: str | None = None
+    payment_terms_days: int | None = 7
 
 
 def _get_or_create(db) -> AccountSettings:
@@ -65,6 +85,16 @@ def update_settings(body: SettingsIn, db: Db):
     s.vat_rate_percent = body.vat_rate_percent
     s.vat_mode = body.vat_mode
     s.round_to_nearest = body.round_to_nearest
+    s.company_name = body.company_name
+    s.company_address = body.company_address
+    s.company_email = body.company_email
+    s.company_phone = body.company_phone
+    s.vat_number = body.vat_number
+    s.bank_name = body.bank_name
+    s.bank_account_name = body.bank_account_name
+    s.bank_iban = body.bank_iban
+    s.bank_bic = body.bank_bic
+    s.payment_terms_days = body.payment_terms_days
     db.commit()
     db.refresh(s)
     return s

@@ -588,6 +588,18 @@ class AccountSettings(Base):
     vat_mode = Column(String(20), nullable=False, default="excluded")
     # Round selling price to nearest N (0 = no rounding)
     round_to_nearest = Column(Integer, nullable=False, default=100)
+    # Company details (used on deposit invoices)
+    company_name         = Column(String(255))
+    company_address      = Column(Text)
+    company_email        = Column(String(255))
+    company_phone        = Column(String(50))
+    vat_number           = Column(String(50))
+    # Bank details for deposit payment instructions
+    bank_name            = Column(String(255))
+    bank_account_name    = Column(String(255))
+    bank_iban            = Column(String(50))
+    bank_bic             = Column(String(20))
+    payment_terms_days   = Column(Integer, default=7)
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
