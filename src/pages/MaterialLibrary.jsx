@@ -201,6 +201,7 @@ function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
     evidence_notes:           mat.evidence_notes           ?? '',
     evidence_status_override: '',  // empty = auto-compute
     evidence_category:        mat.evidence_category        ?? 'manufactured_product',
+    estimated_unit_rate:      mat.estimated_unit_rate      ?? '',
   })
 
   function handleSupplierSelect(supplierId) {
@@ -228,6 +229,9 @@ function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
       const payload = { ...form }
       if (payload.density_kg_m3 !== '') payload.density_kg_m3 = parseFloat(payload.density_kg_m3)
       else delete payload.density_kg_m3
+      if (payload.estimated_unit_rate !== '' && payload.estimated_unit_rate != null)
+        payload.estimated_unit_rate = parseFloat(payload.estimated_unit_rate)
+      else delete payload.estimated_unit_rate
       const updated = await api(`/materials/${mat.id}/evidence`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -282,6 +286,14 @@ function EvidenceModal({ mat, suppliers = [], onClose, onSaved }) {
         <Field label="Price checked date" value={form.price_checked_at} onChange={v => set('price_checked_at', v)} type="date" />
       </div>
       <Field label="Price source URL"    value={form.price_source_url} onChange={v => set('price_source_url', v)} placeholder="https://…" />
+      <Field
+        label="Estimated unit rate (fallback)"
+        value={form.estimated_unit_rate}
+        onChange={v => set('estimated_unit_rate', v)}
+        type="number"
+        placeholder="e.g. 18.50"
+        hint="Used in BOM when no supplier price exists. Shown as 'est.' in cost column."
+      />
       <div>
         <label className="block text-[11px] font-medium text-gray-500 mb-1">Evidence category</label>
         <select value={form.evidence_category} onChange={e => set('evidence_category', e.target.value)}
@@ -548,7 +560,7 @@ export default function MaterialLibraryPage() {
 
   async function handleSupplierAssigned(materialId, supplierId) {
     try {
-      const updated = await api(`/materials/${materialId}`, {
+      const updated = await api(`/materials/${materialId}/evidence`, {
         method: 'PATCH',
         body: JSON.stringify({ preferred_supplier_id: supplierId || '' }),
       })

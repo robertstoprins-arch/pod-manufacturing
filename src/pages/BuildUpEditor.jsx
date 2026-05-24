@@ -445,6 +445,9 @@ export default function BuildUpEditor() {
                               <span className="text-[10px] text-gray-400 border border-gray-200 rounded px-1 shrink-0" title="Library template">lib</span>
                             )}
                           </div>
+                          {bu.notes && (
+                            <div className="text-[10px] text-gray-400 italic truncate mt-0.5" title={bu.notes}>{bu.notes}</div>
+                          )}
                           <div className="flex items-center gap-1.5 mt-1">
                             <TierBadge tier={bu.build_up_type} />
                             <span className="text-gray-400 tabular-nums">

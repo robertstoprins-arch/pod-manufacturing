@@ -62,6 +62,7 @@ class MaterialOut(BaseModel):
     properties: dict | None
     preferred_supplier_id: str | None = None
     preferred_supplier_name: str | None = None
+    estimated_unit_rate: float | None = None  # fallback rate when no supplier price exists
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -109,6 +110,7 @@ class EvidenceIn(BaseModel):
     evidence_status_override: str | None = None  # manual override; None = auto-compute
     evidence_category: str | None = None  # manufactured_product | generic_assembly | raw_material | provisional_allowance | service_item
     preferred_supplier_id: str | None = None  # UUID of supplier from directory; empty string = clear
+    estimated_unit_rate: float | None = None   # fallback unit rate (stored on price_per_unit); None = no change
 
 
 class LayerIn(BaseModel):
@@ -203,6 +205,7 @@ class BuildUpListItem(BaseModel):
     scope: str | None
     status: str | None
     u_value: float | None
+    notes: str | None = None
 
 
 class ValidateIn(BaseModel):
@@ -370,6 +373,7 @@ def _enrich_material(mat: MaterialLibrary, db: Session) -> MaterialOut:
         "properties": mat.properties,
         "preferred_supplier_id": str(mat.preferred_supplier_id) if mat.preferred_supplier_id else None,
         "preferred_supplier_name": None,
+        "estimated_unit_rate": mat.price_per_unit,
     }
     if mat.preferred_supplier_id:
         supplier = db.get(Supplier, mat.preferred_supplier_id)
@@ -416,6 +420,8 @@ def update_material_evidence(material_id: int, body: EvidenceIn, db: Db):
         mat.evidence_notes = body.evidence_notes or None
     if body.evidence_category is not None:
         mat.evidence_category = body.evidence_category
+    if body.estimated_unit_rate is not None:
+        mat.price_per_unit = body.estimated_unit_rate
 
     # Preferred supplier link
     if body.preferred_supplier_id is not None:

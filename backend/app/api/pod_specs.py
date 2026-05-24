@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 from pydantic import BaseModel, ConfigDict
 
 from app.db import get_db
-from app.models import BuildUp, BuildUpLayer, MaterialLibrary, MaterialPrice, PodSpec, ProvisionalAllowance
+from app.models import BuildUp, BuildUpLayer, MaterialLibrary, MaterialPrice, PodSpec, ProvisionalAllowance, Supplier
 from app.skills.element_decomposer import OpeningSpec, decompose_pod
 from app.skills.mto_resolver import MtoInputLayer, WallGeometry, resolve_mto
 from sqlalchemy.orm import Session
@@ -112,6 +112,9 @@ class BomLineOut(BaseModel):
     datasheet_url: str | None = None
     dop_url: str | None = None
     material_id: int | None = None
+    price_source: str | None = None          # "quoted" | "estimate" | "missing"
+    preferred_supplier_id: str | None = None
+    preferred_supplier_name: str | None = None
 
 
 class BomOut(BaseModel):
@@ -122,7 +125,8 @@ class BomOut(BaseModel):
     lines: list[BomLineOut]
     total_cost: float | None = None  # sum of all line_costs where price available
     currency: str | None = None      # currency of the total (None if mixed)
-    warnings: list[str] = []         # data quality and pricing warnings
+    warnings: list[dict] = []        # structured: {severity, code, message, material}
+    has_estimates: bool = False       # True when any line uses estimated rate (not supplier-quoted)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -428,9 +432,15 @@ def get_pod_spec_bom(spec_id: int, db: Db):
     }
 
     lines: list[BomLineOut] = []
-    bom_warnings: list[str] = []
-    # Track which build-ups have already fired the Intello warning (once per BU).
+    bom_warnings: list[dict] = []
+    _warn_keys: set[tuple] = set()
     _intello_warned: set[int] = set()
+
+    def _warn(severity: str, code: str, message: str, material: str | None = None) -> None:
+        key = (code, material)
+        if key not in _warn_keys:
+            _warn_keys.add(key)
+            bom_warnings.append({"severity": severity, "code": code, "message": message, "material": material})
 
     for element_type, bu_id in assignments.items():
         if bu_id is None:
@@ -475,10 +485,9 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                 and "premium" not in bu.name.lower()
             ):
                 _intello_warned.add(bu.id)
-                bom_warnings.append(
-                    f"Build-up '{bu.name}' uses Intello Plus (premium airtight membrane) — "
-                    f"standard/light specifications should use a standard VCL."
-                )
+                _warn("info", "intello_premium",
+                      f"Build-up '{bu.name}' uses Intello Plus — standard spec should use a standard VCL.",
+                      bu.name)
 
             mto_input = MtoInputLayer(
                 name=mat.name,
@@ -525,10 +534,9 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                         line_supplier_ref = c24.supplier_ref or ""
                         apply_thickness_scaling = False
                     else:
-                        bom_warnings.append(
-                            "GENERIC-C24-TIMBER not found in material library — "
-                            "C24 framing line is priced from the composite zone rate (inflated)"
-                        )
+                        _warn("warning", "framing_config",
+                              "GENERIC-C24-TIMBER not found in material library — C24 framing line priced from composite zone rate.",
+                              "GENERIC-C24-TIMBER")
 
                 elif mto.role == "framing_zone_insulation":
                     infill_ref = props.get("infill_material_ref", "")
@@ -544,19 +552,15 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                             line_supplier_ref = infill_mat.supplier_ref or ""
                             apply_thickness_scaling = False
                         else:
-                            bom_warnings.append(
-                                f"Infill material '{infill_ref}' not in material library — "
-                                "insulation infill line priced from composite zone rate (may be inflated)"
-                            )
+                            _warn("warning", "framing_config",
+                                  f"Infill material '{infill_ref}' not in material library — insulation infill priced from composite zone rate.",
+                                  infill_ref)
                     else:
-                        # Framing zone has no infill_material_ref stored in layer properties.
-                        # Warn so the build-up definition can be corrected.
-                        bom_warnings.append(
-                            f"Build-up '{bu.name}' framing zone layer has no "
-                            "'infill_material_ref' in properties — insulation infill "
-                            "priced from composite zone rate. Add infill_material_ref to fix."
-                        )
+                        _warn("info", "framing_config",
+                              f"Build-up '{bu.name}' framing zone has no infill_material_ref — insulation infill priced from composite zone rate.",
+                              bu.name)
 
+                price_source: str | None = None
                 price_per_unit: float | None = None
                 currency: str | None = None
                 line_cost: float | None = None
@@ -574,32 +578,71 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                     price_per_unit = base_price
                     currency = matched_price.currency
                     line_cost = round(mto.order_quantity * price_per_unit, 2)
+                    price_source = "quoted"
+                elif price_mat.price_per_unit is not None:
+                    # Fallback: manufacturer's estimated unit rate stored on material record
+                    base_price = price_mat.price_per_unit
+                    if (
+                        apply_thickness_scaling
+                        and price_basis_mm
+                        and layer.thickness_mm
+                        and layer.thickness_mm != price_basis_mm
+                    ):
+                        base_price = round(base_price * (layer.thickness_mm / price_basis_mm), 4)
+                    price_per_unit = base_price
+                    currency = price_mat.currency or "EUR"
+                    line_cost = round(mto.order_quantity * price_per_unit, 2)
+                    price_source = "estimate"
                 else:
-                    bom_warnings.append(
-                        f"Missing price: {mto.material_name} "
-                        f"({line_supplier_ref or 'no ref'}, unit: {mto.unit}) — line cost excluded"
-                    )
+                    price_source = "missing"
+                    _warn("error", "missing_price",
+                          f"No price: {mto.material_name} ({line_supplier_ref or 'no ref'}, unit: {mto.unit}) — add a supplier price or estimated unit rate.",
+                          mto.material_name)
 
                 # Evidence warnings (skip framing sub-lines — they share the parent material)
                 if mto.role not in ("framing_zone_timber", "framing_zone_insulation"):
                     ev = price_mat.evidence_status
+                    cat = price_mat.evidence_category or "manufactured_product"
+                    _GENERIC_CATS = {"generic_assembly", "provisional_allowance", "service_item"}
                     if ev in ("missing", None):
-                        bom_warnings.append(
-                            f"Evidence missing: {mto.material_name} — supplier, datasheet and DoP not confirmed."
-                        )
+                        if cat in _GENERIC_CATS:
+                            _warn("info", "generic_assembly",
+                                  f"{mto.material_name} — generic assembly, no supplier documentation expected.",
+                                  mto.material_name)
+                        elif cat == "raw_material":
+                            _warn("warning", "evidence_provisional",
+                                  f"{mto.material_name} — raw/site material, no datasheet on file.",
+                                  mto.material_name)
+                        else:
+                            _warn("error", "evidence_missing",
+                                  f"{mto.material_name} — supplier, datasheet and DoP not confirmed.",
+                                  mto.material_name)
                     elif ev == "provisional":
-                        bom_warnings.append(
-                            f"Provisional: {mto.material_name} — product not yet selected, using allowance."
-                        )
+                        if cat in _GENERIC_CATS:
+                            _warn("info", "generic_assembly",
+                                  f"{mto.material_name} — generic assembly allowance.",
+                                  mto.material_name)
+                        else:
+                            _warn("warning", "evidence_provisional",
+                                  f"{mto.material_name} — product not yet selected, using allowance.",
+                                  mto.material_name)
                     elif ev == "partial":
                         if not price_mat.datasheet_url:
-                            bom_warnings.append(
-                                f"Partial evidence: {mto.material_name} — datasheet URL missing."
-                            )
+                            _warn("warning", "evidence_partial",
+                                  f"{mto.material_name} — datasheet URL missing.",
+                                  mto.material_name)
                         if not price_mat.dop_url and price_mat.fire_euroclass:
-                            bom_warnings.append(
-                                f"Partial evidence: {mto.material_name} — DoP missing (fire-classified material)."
-                            )
+                            _warn("warning", "evidence_partial",
+                                  f"{mto.material_name} — DoP missing (fire-classified material).",
+                                  mto.material_name)
+
+                # Resolve preferred supplier for RFQ grouping
+                _pref_sup_id = str(price_mat.preferred_supplier_id) if price_mat.preferred_supplier_id else None
+                _pref_sup_name: str | None = None
+                if price_mat.preferred_supplier_id:
+                    _sup = db.get(Supplier, price_mat.preferred_supplier_id)
+                    if _sup:
+                        _pref_sup_name = _sup.name
 
                 lines.append(BomLineOut(
                     element_type=element_type,
@@ -624,6 +667,9 @@ def get_pod_spec_bom(spec_id: int, db: Db):
                     datasheet_url=price_mat.datasheet_url,
                     dop_url=price_mat.dop_url,
                     material_id=price_mat.id,
+                    price_source=price_source,
+                    preferred_supplier_id=_pref_sup_id,
+                    preferred_supplier_name=_pref_sup_name,
                 ))
 
     # ── Opening counts (for BomOut summary field) ─────────────────────────────
@@ -678,10 +724,9 @@ def get_pod_spec_bom(spec_id: int, db: Db):
         unit_rate = pa.default_unit_rate if pa else 0.0
         curr      = pa.currency if pa else "EUR"
 
-        bom_warnings.append(
-            f"{tag} ({type_label} {w_mm}×{h_mm}mm — Wall {wall_face}): "
-            "cost is provisional allowance — replace with supplier quote"
-        )
+        _warn("warning", "opening_provisional",
+              f"{tag} ({type_label} {w_mm}×{h_mm}mm — Wall {wall_face}): provisional allowance — replace with supplier quote.",
+              tag)
         lines.append(BomLineOut(
             element_type=el_type,
             build_up_name="Openings",
@@ -700,6 +745,7 @@ def get_pod_spec_bom(spec_id: int, db: Db):
             price_per_unit=unit_rate,
             currency=curr,
             line_cost=round(unit_rate, 2),
+            price_source="quoted",
         ))
 
     # Rooflight rows
@@ -715,10 +761,9 @@ def get_pod_spec_bom(spec_id: int, db: Db):
         w_mm = round(float(ro.get("width_m", 0.6)) * 1000)
         h_mm = round(float(ro.get("height_m", 0.8)) * 1000)
 
-        bom_warnings.append(
-            f"{tag} (Rooflight {w_mm}×{h_mm}mm — Roof/Ceiling): "
-            "cost is provisional allowance — verify rooflight appears in roof/ceiling drawing and opening schedule"
-        )
+        _warn("warning", "opening_provisional",
+              f"{tag} (Rooflight {w_mm}×{h_mm}mm — Roof/Ceiling): provisional allowance — verify in roof drawing and opening schedule.",
+              tag)
         lines.append(BomLineOut(
             element_type="Roof",
             build_up_name="Openings",
@@ -737,10 +782,12 @@ def get_pod_spec_bom(spec_id: int, db: Db):
             price_per_unit=rl_rate,
             currency=rl_curr,
             line_cost=round(rl_rate, 2),
+            price_source="quoted",
         ))
 
-    # ── Grand total ───────────────────────────────────────────────────────────
+    # ── Grand total (includes estimate lines — never silently exclude) ─────────
     priced = [l for l in lines if l.line_cost is not None]
+    has_estimates = any(l.price_source == "estimate" for l in priced)
     total_cost: float | None = None
     total_currency: str | None = None
     if priced:
@@ -757,6 +804,7 @@ def get_pod_spec_bom(spec_id: int, db: Db):
         total_cost=total_cost,
         currency=total_currency,
         warnings=bom_warnings,
+        has_estimates=has_estimates,
     )
 
 

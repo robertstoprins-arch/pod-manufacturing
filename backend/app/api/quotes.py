@@ -303,24 +303,42 @@ def get_quote_rfq(quote_id: uuid.UUID, db: Db):
 
     bom = get_pod_spec_bom(quote.pod_spec_id, db)
 
-    # Group BOM lines by supplier name (prefer preferred_supplier_name, fall back to supplier_name, then "Unassigned")
-    supplier_groups: dict[str, list] = {}
-    for line in bom.lines:
-        key = line.supplier_name or "Unassigned"
-        if key not in supplier_groups:
-            supplier_groups[key] = []
-        supplier_groups[key].append(line)
-
     rfq_id = f"RFQ-{str(quote_id)[:8].upper()}"
     currency = quote.currency or bom.currency or "EUR"
+
+    # Group BOM lines:
+    # 1. role="opening" → __openings__ (provisional allowances, separate package)
+    # 2. preferred_supplier_id set → confirmed supplier group (keyed by supplier UUID)
+    # 3. supplier_name text only → suggested supplier group (keyed by name)
+    # 4. neither → __unassigned__
+    _groups: dict[str, dict] = {}  # internal key → {name, confirmed, suggested, is_openings, lines}
+
+    for line in bom.lines:
+        if line.role == "opening":
+            key = "__openings__"
+            if key not in _groups:
+                _groups[key] = {"name": "Openings (Provisional)", "confirmed": False, "suggested": False, "is_openings": True, "lines": []}
+        elif line.preferred_supplier_id:
+            key = f"confirmed__{line.preferred_supplier_id}"
+            if key not in _groups:
+                _groups[key] = {"name": line.preferred_supplier_name or "Confirmed Supplier", "confirmed": True, "suggested": False, "is_openings": False, "lines": []}
+        elif line.supplier_name:
+            key = f"suggested__{line.supplier_name}"
+            if key not in _groups:
+                _groups[key] = {"name": line.supplier_name, "confirmed": False, "suggested": True, "is_openings": False, "lines": []}
+        else:
+            key = "__unassigned__"
+            if key not in _groups:
+                _groups[key] = {"name": "Unassigned", "confirmed": False, "suggested": False, "is_openings": False, "lines": []}
+        _groups[key]["lines"].append(line)
 
     # Build per-supplier RFQ items
     rfq_suppliers = []
     line_counter = 1
-    for supplier_name, lines in supplier_groups.items():
+    for group in _groups.values():
         items = []
-        for line in lines:
-            # Skip zero-quantity framing sub-lines that are nested under the main layer
+        for line in group["lines"]:
+            # Skip zero-quantity framing sub-lines
             if line.order_quantity == 0:
                 continue
             items.append({
@@ -341,23 +359,34 @@ def get_quote_rfq(quote_id: uuid.UUID, db: Db):
                 "datasheet_url": line.datasheet_url or None,
                 "dop_url": line.dop_url or None,
                 "material_id": line.material_id,
+                "price_source": line.price_source,
+                "role": line.role,
             })
             line_counter += 1
 
         if items:
             rfq_suppliers.append({
-                "supplier_name": supplier_name,
+                "supplier_name": group["name"],
+                "confirmed": group["confirmed"],
+                "suggested": group["suggested"],
+                "is_openings": group["is_openings"],
                 "items": items,
                 "estimated_subtotal": round(
                     sum(i["estimated_line_cost"] for i in items if i["estimated_line_cost"]), 2
                 ) or None,
             })
 
+    # RFQ readiness: Blocked if any error-severity warning; Needs Attention if any warning; else Ready
+    _has_errors   = any(w.get("severity") == "error"   for w in bom.warnings)
+    _has_warnings = any(w.get("severity") == "warning" for w in bom.warnings)
+    rfq_readiness = "Blocked" if _has_errors else ("Needs Attention" if _has_warnings else "Ready")
+
     rfq = {
         "message_type": "rfq_request",
         "version": "0.1",
         "rfq_id": rfq_id,
         "generated_at": _now().isoformat(),
+        "rfq_readiness": rfq_readiness,
         "buyer": {
             "company_name": "Top-R Solutions",
             "contact_email": "",
@@ -381,6 +410,7 @@ def get_quote_rfq(quote_id: uuid.UUID, db: Db):
             "areas": bom.areas,
             "opening_counts": bom.opening_counts,
             "estimated_total": bom.total_cost,
+            "has_estimates": bom.has_estimates,
             "warnings": bom.warnings,
         },
         "supplier_groups": rfq_suppliers,

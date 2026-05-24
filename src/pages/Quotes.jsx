@@ -375,12 +375,20 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
     >
       {/* Tabs */}
       <div className="flex gap-1 -mt-1 mb-2 border-b border-gray-100 pb-2">
-        {tabs.map(t => (
-          <button key={t} onClick={() => { setTab(t); if (t === 'rfq' && !rfq) loadRfq() }}
-            className={`px-3 py-1 text-xs rounded font-medium uppercase tracking-wide transition-colors ${tab === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}>
-            {t}
-          </button>
-        ))}
+        {tabs.map(t => {
+          const errorCount = t === 'rfq' && rfq
+            ? (rfq.spec_summary?.warnings?.filter(w => w.severity === 'error').length ?? 0)
+            : 0
+          return (
+            <button key={t} onClick={() => { setTab(t); if (t === 'rfq' && !rfq) loadRfq() }}
+              className={`relative px-3 py-1 text-xs rounded font-medium uppercase tracking-wide transition-colors ${tab === t ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-800'}`}>
+              {t}
+              {errorCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center w-4 h-4 bg-red-500 text-white text-[9px] rounded-full font-bold">{errorCount}</span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'details' && (
@@ -536,18 +544,36 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
               {/* Summary bar */}
               <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
                 <div>
-                  <div className="text-xs font-semibold text-gray-700">{rfq.rfq_id}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-semibold text-gray-700">{rfq.rfq_id}</div>
+                    {rfq.rfq_readiness === 'Ready' && (
+                      <span className="text-[10px] bg-green-100 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-medium">Ready</span>
+                    )}
+                    {rfq.rfq_readiness === 'Needs Attention' && (
+                      <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-medium">Needs Attention</span>
+                    )}
+                    {rfq.rfq_readiness === 'Blocked' && (
+                      <span className="text-[10px] bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-medium">Blocked</span>
+                    )}
+                  </div>
                   <div className="text-[11px] text-gray-400 mt-0.5">
                     {rfq.total_items} items · {rfq.total_suppliers} supplier{rfq.total_suppliers !== 1 ? 's' : ''}
                     {rfq.spec_summary?.estimated_total != null && (
                       <span> · est. {rfq.project.currency} {Number(rfq.spec_summary.estimated_total).toLocaleString()}</span>
                     )}
+                    {rfq.spec_summary?.has_estimates && <span className="text-amber-500"> (inc. estimates)</span>}
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(rfq, null, 2))}>Copy JSON</Btn>
                   <Btn small variant="secondary" onClick={downloadRfq}>Download</Btn>
-                  <Btn small onClick={() => setShowSendModal(true)}>Send to Suppliers</Btn>
+                  <Btn small onClick={() => {
+                    const hasErrors = rfq.spec_summary?.warnings?.some(w => w.severity === 'error')
+                    if (hasErrors) {
+                      if (!window.confirm('This RFQ has error-level warnings (missing prices or evidence). Send anyway?')) return
+                    }
+                    setShowSendModal(true)
+                  }}>Send to Suppliers</Btn>
                 </div>
               </div>
 
@@ -567,106 +593,169 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
               {/* BOM view */}
               {rfqView === 'bom' && (
                 <>
-                  {/* Warnings */}
-                  {rfq.spec_summary?.warnings?.length > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
-                      <p className="text-[11px] font-medium text-amber-700">BOM warnings</p>
-                      {rfq.spec_summary.warnings.map((w, i) => (
-                        <p key={i} className="text-[11px] text-amber-600">· {w}</p>
-                      ))}
-                    </div>
-                  )}
+                  {/* Structured warnings — grouped by severity */}
+                  {rfq.spec_summary?.warnings?.length > 0 && (() => {
+                    const ws = rfq.spec_summary.warnings
+                    const errors   = ws.filter(w => w.severity === 'error')
+                    const warnings = ws.filter(w => w.severity === 'warning')
+                    const infos    = ws.filter(w => w.severity === 'info')
+                    return (
+                      <div className="space-y-2">
+                        {errors.length > 0 && (
+                          <div className="bg-red-50 border border-red-200 rounded p-3 space-y-1">
+                            <p className="text-[11px] font-semibold text-red-700">{errors.length} error{errors.length > 1 ? 's' : ''} — must fix before sending</p>
+                            {errors.map((w, i) => (
+                              <p key={i} className="text-[11px] text-red-600">· {w.message}</p>
+                            ))}
+                          </div>
+                        )}
+                        {warnings.length > 0 && (
+                          <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                            <p className="text-[11px] font-semibold text-amber-700">{warnings.length} warning{warnings.length > 1 ? 's' : ''}</p>
+                            {warnings.map((w, i) => (
+                              <p key={i} className="text-[11px] text-amber-600">· {w.message}</p>
+                            ))}
+                          </div>
+                        )}
+                        {infos.length > 0 && (
+                          <details className="group">
+                            <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 select-none">{infos.length} info note{infos.length > 1 ? 's' : ''} (expand)</summary>
+                            <div className="mt-1 bg-gray-50 border border-gray-100 rounded p-3 space-y-1">
+                              {infos.map((w, i) => (
+                                <p key={i} className="text-[11px] text-gray-500">· {w.message}</p>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )
+                  })()}
 
-                  {/* No suppliers / no items banner */}
+                  {/* No items banner */}
                   {rfq.total_items === 0 && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1.5">
                       <p className="font-semibold">RFQ package is empty</p>
                       <p>This can happen for two reasons:</p>
                       <ul className="list-disc list-inside space-y-1 text-amber-700">
-                        <li><span className="font-medium">Pod spec has no geometry</span> — open the pod spec and set dimensions (width, length, height) so quantities can be calculated.</li>
-                        <li><span className="font-medium">Materials have no preferred supplier</span> — go to <span className="font-semibold">Material Library</span>, click any material, and set its <span className="font-semibold">Preferred Supplier</span> from the dropdown in the edit panel.</li>
+                        <li><span className="font-medium">Pod spec has no geometry</span> — open the pod spec and set dimensions so quantities can be calculated.</li>
+                        <li><span className="font-medium">Materials have no preferred supplier</span> — go to <span className="font-semibold">Material Library</span>, open any material, and set its <span className="font-semibold">Preferred Supplier</span>.</li>
                       </ul>
                     </div>
                   )}
-                  {rfq.total_items > 0 && rfq.supplier_groups.some(g => g.supplier_name === 'Unassigned') && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700">
-                      Some materials have no preferred supplier — use the dropdown in the <span className="font-semibold">Unassigned</span> group below to assign one.
+
+                  {/* Estimates note */}
+                  {rfq.spec_summary?.has_estimates && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-xs text-amber-700">
+                      Total includes <span className="font-semibold">estimated rates</span> (amber est. badge) — lines without a confirmed supplier price. Add supplier prices or confirm quotes to clear these.
                     </div>
                   )}
 
                   <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {rfq.supplier_groups.map(group => (
-                      <div key={group.supplier_name} className={`border rounded-lg overflow-hidden ${group.supplier_name === 'Unassigned' ? 'border-amber-200' : 'border-gray-100'}`}>
-                        <div className={`px-4 py-2 flex items-center justify-between ${group.supplier_name === 'Unassigned' ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                          <span className={`text-xs font-semibold ${group.supplier_name === 'Unassigned' ? 'text-amber-700' : 'text-gray-700'}`}>
-                            {group.supplier_name === 'Unassigned' ? 'Unassigned — pick a supplier below' : group.supplier_name}
-                          </span>
-                          {group.estimated_subtotal != null && (
-                            <span className="text-[11px] text-gray-500">
-                              est. {rfq.project.currency} {Number(group.estimated_subtotal).toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-                        <table className="w-full text-xs">
-                          <thead className="border-b border-gray-100">
-                            <tr>
-                              <th className="text-left px-4 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Material</th>
-                              <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
-                              <th className="text-left px-2 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
-                              <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Est. Cost</th>
-                              <th className="px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase text-left">Supplier</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.items.map(item => (
-                              <tr key={item.line_id} className="border-t border-gray-50">
-                                <td className="px-4 py-2 text-gray-800">
-                                  <div>{item.description}</div>
-                                  {item.required_evidence?.length > 0 && (
-                                    <div className="text-[10px] text-amber-500">⚠ {item.required_evidence.join(', ')}</div>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 text-right text-gray-600 font-mono">{item.quantity}</td>
-                                <td className="px-2 py-2 text-gray-400">{item.unit}</td>
-                                <td className="px-3 py-2 text-right text-gray-600">
-                                  {item.estimated_line_cost != null
-                                    ? `${item.currency} ${Number(item.estimated_line_cost).toLocaleString()}`
-                                    : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-3 py-2">
-                                  {item.material_id ? (
-                                    <select
-                                      defaultValue={group.supplier_name === 'Unassigned' ? '' : ''}
-                                      className="text-[11px] border border-gray-200 rounded px-1.5 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[130px]"
-                                      onChange={async e => {
-                                        const supplierId = e.target.value
-                                        if (!supplierId) return
-                                        try {
-                                          await api(`/materials/${item.material_id}`, {
-                                            method: 'PATCH',
-                                            body: JSON.stringify({ preferred_supplier_id: supplierId }),
-                                          })
-                                          await loadRfq()
-                                        } catch (err) {
-                                          alert(`Failed to assign supplier: ${err.message}`)
-                                        }
-                                      }}
-                                    >
-                                      <option value="">— assign supplier —</option>
-                                      {rfqSuppliers.filter(s => !s.archived).map(s => (
-                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span className="text-gray-300 text-[11px]">—</span>
-                                  )}
-                                </td>
+                    {rfq.supplier_groups.map((group, gi) => {
+                      // Group visual style
+                      const isOpenings   = group.is_openings
+                      const isConfirmed  = group.confirmed
+                      const isSuggested  = group.suggested
+                      const isUnassigned = !isOpenings && !isConfirmed && !isSuggested
+                      const borderCls = isOpenings   ? 'border-amber-200'
+                                      : isConfirmed  ? 'border-teal-200'
+                                      : isSuggested  ? 'border-gray-200'
+                                      : 'border-amber-200'
+                      const headerCls = isOpenings   ? 'bg-amber-50'
+                                      : isConfirmed  ? 'bg-teal-50'
+                                      : isSuggested  ? 'bg-gray-50'
+                                      : 'bg-amber-50'
+                      const titleCls  = isOpenings   ? 'text-amber-700'
+                                      : isConfirmed  ? 'text-teal-700'
+                                      : isSuggested  ? 'text-gray-600'
+                                      : 'text-amber-700'
+                      return (
+                        <div key={gi} className={`border rounded-lg overflow-hidden ${borderCls}`}>
+                          <div className={`px-4 py-2 flex items-center justify-between ${headerCls}`}>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-semibold ${titleCls}`}>
+                                {isOpenings   ? 'Openings (Provisional — supplier quotes required)' : group.supplier_name}
+                              </span>
+                              {isConfirmed  && <span className="text-[10px] bg-teal-100 text-teal-600 border border-teal-200 px-1.5 py-0.5 rounded font-medium">confirmed</span>}
+                              {isSuggested  && <span className="text-[10px] bg-gray-100 text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded font-medium">suggested</span>}
+                              {isUnassigned && <span className="text-[10px] bg-amber-100 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded font-medium">unassigned</span>}
+                            </div>
+                            {group.estimated_subtotal != null && (
+                              <span className="text-[11px] text-gray-500">
+                                est. {rfq.project.currency} {Number(group.estimated_subtotal).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          <table className="w-full text-xs">
+                            <thead className="border-b border-gray-100">
+                              <tr>
+                                <th className="text-left px-4 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Material</th>
+                                <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Qty</th>
+                                <th className="text-left px-2 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Unit</th>
+                                <th className="text-right px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase">Est. Cost</th>
+                                {!isOpenings && <th className="px-3 py-1.5 text-[10px] font-medium text-gray-400 uppercase text-left">Supplier</th>}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
+                            </thead>
+                            <tbody>
+                              {group.items.map(item => (
+                                <tr key={item.line_id} className={`border-t border-gray-50 ${item.price_source === 'estimate' ? 'bg-amber-50/40' : ''}`}>
+                                  <td className="px-4 py-2 text-gray-800">
+                                    <div>{item.description}</div>
+                                    {item.required_evidence?.length > 0 && (
+                                      <div className="text-[10px] text-amber-500">⚠ {item.required_evidence.join(', ')}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-gray-600 font-mono">{item.quantity}</td>
+                                  <td className="px-2 py-2 text-gray-400">{item.unit}</td>
+                                  <td className="px-3 py-2 text-right text-gray-600">
+                                    {item.estimated_line_cost != null ? (
+                                      <span className="flex items-center justify-end gap-1">
+                                        {item.price_source === 'estimate' && (
+                                          <span className="text-[9px] bg-amber-100 text-amber-600 border border-amber-200 px-1 py-0.5 rounded font-medium">est.</span>
+                                        )}
+                                        {item.currency} {Number(item.estimated_line_cost).toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span className="text-red-400 font-medium">no price</span>
+                                    )}
+                                  </td>
+                                  {!isOpenings && (
+                                    <td className="px-3 py-2">
+                                      {item.material_id ? (
+                                        <select
+                                          defaultValue=""
+                                          className="text-[11px] border border-gray-200 rounded px-1.5 py-1 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[130px]"
+                                          onChange={async e => {
+                                            const supplierId = e.target.value
+                                            if (!supplierId) return
+                                            try {
+                                              await api(`/materials/${item.material_id}/evidence`, {
+                                                method: 'PATCH',
+                                                body: JSON.stringify({ preferred_supplier_id: supplierId }),
+                                              })
+                                              await loadRfq()
+                                            } catch (err) {
+                                              alert(`Failed to assign supplier: ${err.message}`)
+                                            }
+                                          }}
+                                        >
+                                          <option value="">— assign supplier —</option>
+                                          {rfqSuppliers.filter(s => !s.archived).map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <span className="text-gray-300 text-[11px]">—</span>
+                                      )}
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    })}
                   </div>
                   {/* Responses panel */}
                   <RfqResponsesPanel
