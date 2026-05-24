@@ -422,8 +422,11 @@ def get_quote_rfq(quote_id: uuid.UUID, db: Db):
 
 
 def _required_evidence(line) -> list[str]:
+    # Openings and provisional assemblies don't require product evidence
+    if line.role == "opening":
+        return []
     ev = line.evidence_status or "missing"
-    if ev == "verified":
+    if ev in ("verified", "provisional"):
         return []
     needed = []
     if not line.datasheet_url:
