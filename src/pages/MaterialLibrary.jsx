@@ -428,7 +428,7 @@ function SectionHeader({ label, count, note }) {
 
 // ── Material row ───────────────────────────────────────────────────────────────
 
-function MaterialRow({ m, onEdit, onDelete }) {
+function MaterialRow({ m, onEdit, onDelete, suppliers, onSupplierAssigned }) {
   const notes      = m.properties?.notes
   const isBuilding = m.properties?.material_class === 'building'
 
@@ -437,10 +437,6 @@ function MaterialRow({ m, onEdit, onDelete }) {
       <td className="py-3 px-4 min-w-[220px]">
         <div className="font-medium text-gray-900 text-[12px] leading-snug">{m.name}</div>
         {m.spec_ref && <div className="text-[10px] text-gray-500 font-mono mt-0.5">{m.spec_ref}</div>}
-        {m.preferred_supplier_name
-          ? <div className="text-[10px] mt-0.5 text-teal-600 font-medium">⬡ {m.preferred_supplier_name}</div>
-          : m.supplier_name && <div className={`text-[10px] mt-0.5 ${isBuilding ? 'text-blue-600' : 'text-gray-400'}`}>{m.supplier_name}</div>
-        }
         {notes && (
           <div className="mt-1.5 text-[10px] text-gray-500 italic leading-relaxed border-l-2 border-amber-300 pl-2 bg-amber-50/50 py-0.5 rounded-r">
             {notes}
@@ -458,10 +454,26 @@ function MaterialRow({ m, onEdit, onDelete }) {
           ? <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded border border-gray-200 font-mono">{m.fire_euroclass}</span>
           : <span className="text-gray-300 text-[11px]">—</span>}
       </td>
-      <td className="py-3 px-3 align-top">
-        {isBuilding && !m.supplier_url
-          ? <span className="text-[10px] text-blue-500 italic">Local merchants</span>
-          : <LinkCell url={m.supplier_url} label="Supplier" />}
+      {/* Preferred supplier — inline quick-assign */}
+      <td className="py-2 px-3 align-middle min-w-[140px]">
+        {suppliers.length > 0 ? (
+          <select
+            value={m.preferred_supplier_id ?? ''}
+            onChange={e => onSupplierAssigned(m.id, e.target.value)}
+            className={`text-[11px] border rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-full max-w-[150px] ${
+              m.preferred_supplier_id
+                ? 'border-teal-300 text-teal-700'
+                : 'border-gray-200 text-gray-400'
+            }`}
+          >
+            <option value="">— none —</option>
+            {suppliers.filter(s => !s.archived).map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-[11px] text-gray-300">—</span>
+        )}
       </td>
       <td className="py-3 px-3 align-top">
         {isBuilding && !m.datasheet_url
@@ -534,6 +546,18 @@ export default function MaterialLibraryPage() {
   const handleAdded   = created => { setMaterials(ms => [...ms, created]); setShowAdd(false) }
   const handleDeleted = id      => setMaterials(ms => ms.filter(m => m.id !== id))
 
+  async function handleSupplierAssigned(materialId, supplierId) {
+    try {
+      const updated = await api(`/materials/${materialId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ preferred_supplier_id: supplierId || '' }),
+      })
+      handleSaved(updated)
+    } catch (e) {
+      alert(`Failed to assign supplier: ${e.message}`)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50">
 
@@ -585,7 +609,7 @@ export default function MaterialLibraryPage() {
               <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">Manufacturer / Source</th>
               <th className="text-right py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">λ W/mK</th>
               <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">Fire</th>
-              <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">Supplier</th>
+              <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">Preferred Supplier</th>
               <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">Datasheet</th>
               <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">DoP</th>
               <th className="text-left py-2.5 px-3 font-medium text-gray-400 text-[10px] uppercase tracking-wide">Evidence</th>
@@ -597,7 +621,7 @@ export default function MaterialLibraryPage() {
               <>
                 <SectionHeader key={`hdr-${group.id}`} label={group.label} count={group.items.length} note={group.note} />
                 {group.items.map(m => (
-                  <MaterialRow key={m.id} m={m} onEdit={setEditTarget} onDelete={setDeleteTarget} />
+                  <MaterialRow key={m.id} m={m} onEdit={setEditTarget} onDelete={setDeleteTarget} suppliers={suppliers} onSupplierAssigned={handleSupplierAssigned} />
                 ))}
               </>
             ))}

@@ -577,11 +577,20 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                     </div>
                   )}
 
-                  {/* No suppliers banner */}
-                  {rfq.total_suppliers === 0 && rfq.total_items === 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-700">
-                      <p className="font-medium mb-0.5">No suppliers assigned to these materials yet.</p>
-                      <p className="text-blue-500">Use the dropdown in each row below to assign a preferred supplier. The RFQ package will update automatically.</p>
+                  {/* No suppliers / no items banner */}
+                  {rfq.total_items === 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 space-y-1.5">
+                      <p className="font-semibold">RFQ package is empty</p>
+                      <p>This can happen for two reasons:</p>
+                      <ul className="list-disc list-inside space-y-1 text-amber-700">
+                        <li><span className="font-medium">Pod spec has no geometry</span> — open the pod spec and set dimensions (width, length, height) so quantities can be calculated.</li>
+                        <li><span className="font-medium">Materials have no preferred supplier</span> — go to <span className="font-semibold">Material Library</span>, click any material, and set its <span className="font-semibold">Preferred Supplier</span> from the dropdown in the edit panel.</li>
+                      </ul>
+                    </div>
+                  )}
+                  {rfq.total_items > 0 && rfq.supplier_groups.some(g => g.supplier_name === 'Unassigned') && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700">
+                      Some materials have no preferred supplier — use the dropdown in the <span className="font-semibold">Unassigned</span> group below to assign one.
                     </div>
                   )}
 
