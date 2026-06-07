@@ -573,8 +573,17 @@ def _get_settings(db: Session) -> AccountSettings | None:
 
 def _build_email_html(quote: Quote, body_text: str, portal_url: str, settings: AccountSettings | None) -> str:
     company_name  = (settings and settings.company_name)  or "Top-R Solutions"
-    company_email = (settings and settings.company_email) or "quotes@top-r.com"
+    company_email = (settings and settings.company_email) or ""
     company_phone = (settings and settings.company_phone) or ""
+
+    # Backend URL for direct PDF download link.
+    # Render sets RENDER_EXTERNAL_URL automatically; BACKEND_URL can override it.
+    _backend_base = (
+        os.environ.get("BACKEND_URL")
+        or os.environ.get("RENDER_EXTERNAL_URL")
+        or ""
+    ).rstrip("/")
+    pdf_url = f"{_backend_base}/quotes/view/{quote.client_token}/client-quote.pdf" if _backend_base else None
 
     price_line = ""
     if quote.total_inc_vat and float(quote.total_inc_vat) > 0:
@@ -595,6 +604,39 @@ def _build_email_html(quote: Quote, body_text: str, portal_url: str, settings: A
           </td>
         </tr>"""
 
+    # Build a brief product spec summary from the snapshot
+    spec_rows = ""
+    if quote.spec_snapshot:
+        f = _spec_fields(quote.spec_snapshot)
+        _POD_LABELS = {"office": "Office Pod", "garden": "Garden Pod", "studio": "Studio", "custom": "Custom"}
+        pod_type = _POD_LABELS.get(f.get("pod_type", ""), f.get("pod_type", ""))
+        w, l, h = f.get("width_m"), f.get("length_m"), f.get("height_m") or f.get("wall_height_m")
+        dims = (f"{w} m × {l} m" + (f" × {h} m H" if h else "")) if w and l else None
+        qty  = f.get("quantity")
+        location = f.get("location")
+        rows = []
+        if pod_type:
+            rows.append(("Product", pod_type))
+        if dims:
+            rows.append(("Dimensions", dims))
+        if qty and int(qty) > 1:
+            rows.append(("Quantity", str(qty)))
+        if location:
+            rows.append(("Location", location))
+        if rows:
+            inner = "".join(
+                f"<tr><td style='padding:4px 8px 4px 0;color:#6b7280;font-size:13px;white-space:nowrap;'>{k}</td>"
+                f"<td style='padding:4px 0;font-size:13px;color:#111;'>{v}</td></tr>"
+                for k, v in rows
+            )
+            spec_rows = f"""
+        <tr><td style="padding:16px 0 8px 0;">
+          <table cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;width:100%;background:#f9fafb;">
+            <tr><td colspan="2" style="padding-bottom:8px;font-size:11px;font-weight:bold;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;">Your Specification</td></tr>
+            {inner}
+          </table>
+        </td></tr>"""
+
     body_html = body_text.replace("\n", "<br>")
 
     return f"""<!DOCTYPE html>
@@ -607,7 +649,7 @@ def _build_email_html(quote: Quote, body_text: str, portal_url: str, settings: A
         <tr><td style="border-bottom:2px solid #16a34a;padding-bottom:16px;margin-bottom:16px;">
           <h2 style="color:#16a34a;margin:0;">{company_name}</h2>
         </td></tr>
-        <tr><td style="padding:24px 0;">
+        <tr><td style="padding:24px 0 8px 0;">
           <p style="margin:0 0 16px 0;">{body_html}</p>
         </td></tr>
         <tr><td>
@@ -620,12 +662,18 @@ def _build_email_html(quote: Quote, body_text: str, portal_url: str, settings: A
             {price_line}
           </table>
         </td></tr>
-        <tr><td style="padding:24px 0 8px 0;text-align:center;">
+        {spec_rows}
+        <tr><td style="padding:24px 0 12px 0;text-align:center;">
           <a href="{portal_url}"
              style="background:#16a34a;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;">
             View Your Quote
           </a>
         </td></tr>
+        {f'''<tr><td style="padding:0 0 16px 0;text-align:center;">
+          <a href="{pdf_url}" style="font-size:13px;color:#16a34a;text-decoration:underline;">
+            Download Quote PDF
+          </a>
+        </td></tr>''' if pdf_url else ''}
         <tr><td style="padding:16px 0 0 0;font-size:12px;color:#6b7280;border-top:1px solid #e5e7eb;">
           <p style="margin:4px 0;">{company_name}</p>
           {"<p style='margin:4px 0;'>" + company_email + "</p>" if company_email else ""}
