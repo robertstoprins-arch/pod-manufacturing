@@ -418,13 +418,16 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         fields = _spec_fields(q.spec_snapshot)
         w = fields.get("width_m")
         l = fields.get("length_m")
+        h = fields.get("height_m") or fields.get("wall_height_m")
+        dims = (f"{w}m × {l}m" + (f" × {h}m H" if h else "")) if w and l else None
         recent_enquiries.append({
             "quote_id":           str(q.id),
             "reference":          q.quote_number or str(q.id)[:8],
             "client_name":        q.client_name or "Unknown",
+            "client_email":       q.client_email,
             "product_template_id": q.spec_snapshot.get("product_template_id") if q.spec_snapshot else None,
             "pod_type":           fields.get("pod_type"),
-            "dimensions":         f"{w}m × {l}m" if w and l else None,
+            "dimensions":         dims,
             "status":             q.status,
             "lead_source":        q.lead_source,
             "pricing_status":     "complete" if (q.total_inc_vat and float(q.total_inc_vat) > 0) else "missing",

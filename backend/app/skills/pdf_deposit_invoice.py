@@ -272,18 +272,44 @@ def build_deposit_invoice(quote: dict, settings: dict) -> bytes:
 
     # ── Notes / spec summary ─────────────────────────────────────────────────
     spec = quote.get("spec_summary") or {}
-    spec_parts = []
-    if spec.get("width_m") and spec.get("length_m"):
-        spec_parts.append(f"{spec['width_m']}m × {spec['length_m']}m")
-    if spec.get("floor_area_m2"):
-        spec_parts.append(f"{spec['floor_area_m2']}m² floor area")
-    if spec.get("roof_type"):
-        spec_parts.append(spec["roof_type"])
 
-    if spec_parts:
+    _POD_TYPE = {"office": "Office Pod", "garden": "Garden Pod", "custom": "Custom"}
+    _FINISH    = {"timber_clad": "Timber Cladding", "composite": "Composite Panel",
+                  "brick_slip": "Brick Slip", "render": "Render", "corrugated_metal": "Corrugated Metal"}
+    _DELIVERY  = {"supply_only": "Supply Only", "supply_install": "Supply & Install", "turnkey": "Turnkey"}
+    _FOUND     = {"groundworks": "Concrete Pad", "screw_pile": "Screw Pile",
+                  "pad_stone": "Pad Stone", "existing_slab": "Existing Slab"}
+    _INT_FIN   = {"basic": "Basic", "standard": "Standard", "premium": "Premium"}
+
+    spec_rows = []
+    if spec.get("pod_type"):
+        spec_rows.append(("Pod type", _POD_TYPE.get(spec["pod_type"], spec["pod_type"])))
+    if spec.get("quantity") and int(spec["quantity"]) > 1:
+        spec_rows.append(("Quantity", str(spec["quantity"])))
+    if spec.get("width_m") and spec.get("length_m"):
+        h_part = f" × {spec['height_m']}m H" if spec.get("height_m") else ""
+        spec_rows.append(("Dimensions", f"{spec['width_m']}m × {spec['length_m']}m{h_part}"))
+    if spec.get("external_finish"):
+        spec_rows.append(("External finish", _FINISH.get(spec["external_finish"], spec["external_finish"])))
+    if spec.get("internal_finish_package"):
+        spec_rows.append(("Internal finish", _INT_FIN.get(spec["internal_finish_package"], spec["internal_finish_package"])))
+    if spec.get("foundation_option"):
+        spec_rows.append(("Foundation", _FOUND.get(spec["foundation_option"], spec["foundation_option"])))
+    if spec.get("delivery_install_option"):
+        spec_rows.append(("Delivery", _DELIVERY.get(spec["delivery_install_option"], spec["delivery_install_option"])))
+
+    if spec_rows:
         elems.append(Spacer(1, 4*mm))
         elems.append(Paragraph("POD SPECIFICATION", ST["section"]))
-        elems.append(Paragraph(" · ".join(spec_parts), ST["body"]))
+        tbl_data = [[Paragraph(k, ST["tbl_hdr"]), Paragraph(v, ST["tbl_cell"])] for k, v in spec_rows]
+        spec_tbl = Table(tbl_data, colWidths=[50*mm, CW - 50*mm])
+        spec_tbl.setStyle(_tbl([
+            ("GRID",        (0, 0), (-1, -1), 0.3, RULE),
+            ("BACKGROUND",  (0, 0), (0, -1),       BG),
+            ("TOPPADDING",  (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
+        ]))
+        elems.append(spec_tbl)
 
     if quote.get("notes"):
         elems.append(Spacer(1, 4*mm))

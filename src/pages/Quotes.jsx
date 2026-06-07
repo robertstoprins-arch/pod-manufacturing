@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useApi } from '../api/useApi'
+import { OFFICE_POD } from '../config/productTemplates.js'
+
+// Map a questionnaire field value to its human-readable option label.
+function fieldOptionLabel(key, value) {
+  if (value == null || value === '') return null
+  const field = OFFICE_POD.fields.find(f => f.key === key)
+  if (!field?.options) return String(value)
+  const opt = field.options.find(o => o.value === value)
+  return opt?.label ?? String(value)
+}
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
@@ -454,9 +464,16 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
             const row = (label, val) => (val != null && val !== '') ? { label, value: String(val) } : null
             const m   = (v, unit) => v != null && v !== '' ? `${v} ${unit}` : null
 
+            const doorLabel = qa.door_count != null
+              ? `${qa.door_count}${qa.door_type ? ` × ${fieldOptionLabel('door_type', qa.door_type)}` : ''}`
+              : null
+            const windowLabel = qa.window_count != null
+              ? `${qa.window_count}${qa.window_type ? ` × ${fieldOptionLabel('window_type', qa.window_type)}` : ''}`
+              : null
+
             const groups = [
               { title: 'Pod', rows: [
-                row('Type',     qa.pod_type),
+                row('Type',     fieldOptionLabel('pod_type', qa.pod_type)),
                 row('Quantity', qa.quantity),
               ]},
               { title: 'Dimensions', rows: [
@@ -465,25 +482,25 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                 row('Height',  m(qa.height_m, 'm')),
               ]},
               { title: 'Openings', rows: [
-                row('Doors',      qa.door_count != null ? `${qa.door_count}${qa.door_type ? ` × ${qa.door_type}` : ''}` : null),
-                row('Windows',    qa.window_count != null ? `${qa.window_count}${qa.window_type ? ` × ${qa.window_type}` : ''}` : null),
+                row('Doors',      doorLabel),
+                row('Windows',    windowLabel),
                 row('Rooflights', qa.rooflight_count || null),
               ]},
               { title: 'Finishes', rows: [
-                row('External', qa.external_finish),
-                row('Internal', qa.internal_finish_package),
+                row('External', fieldOptionLabel('external_finish',        qa.external_finish)),
+                row('Internal', fieldOptionLabel('internal_finish_package', qa.internal_finish_package)),
               ]},
               { title: 'Services', rows: [
-                row('Heating',     qa.heating_option),
-                row('Ventilation', qa.ventilation_option),
-                row('Electrical',  qa.electrical_package),
+                row('Heating',     fieldOptionLabel('heating_option',     qa.heating_option)),
+                row('Ventilation', fieldOptionLabel('ventilation_option', qa.ventilation_option)),
+                row('Electrical',  fieldOptionLabel('electrical_package', qa.electrical_package)),
               ]},
               { title: 'Site', rows: [
-                row('Foundation', qa.foundation_option),
-                row('Delivery',   qa.delivery_install_option),
+                row('Foundation', fieldOptionLabel('foundation_option',       qa.foundation_option)),
+                row('Delivery',   fieldOptionLabel('delivery_install_option', qa.delivery_install_option)),
                 row('Location',   qa.location),
-                row('Use',        qa.intended_use),
-                row('Timeline',   qa.timeline),
+                row('Use',        fieldOptionLabel('intended_use', qa.intended_use)),
+                row('Timeline',   fieldOptionLabel('timeline',     qa.timeline)),
               ]},
             ].map(g => ({ ...g, rows: g.rows.filter(Boolean) })).filter(g => g.rows.length > 0)
 

@@ -322,36 +322,39 @@ function ActionItem({ item, onOpen }) {
   )
 }
 
+const POD_TYPE_LABELS = { office: 'Office Pod', garden: 'Garden Pod', custom: 'Custom' }
+
 function EnquiryRow({ enquiry, onOpen }) {
+  const podLabel = POD_TYPE_LABELS[enquiry.pod_type] || enquiry.pod_type
+  const pricePart = enquiry.pricing_status === 'complete' && enquiry.total_inc_vat != null
+    ? `${enquiry.currency} ${Number(enquiry.total_inc_vat).toLocaleString()}`
+    : null
+
+  const meta = [enquiry.client_email, podLabel, enquiry.dimensions].filter(Boolean).join(' · ')
+
   return (
     <div
-      className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 cursor-pointer border border-gray-100 group"
+      className="flex items-start justify-between gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer group"
       onClick={onOpen}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-900">{enquiry.reference}</span>
-          {enquiry.client_name && (
-            <span className="text-[11px] text-gray-500">{enquiry.client_name}</span>
-          )}
-          {enquiry.dimensions && (
-            <span className="text-[11px] text-gray-400">{enquiry.dimensions}</span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-semibold text-gray-900">{enquiry.reference}</span>
+          {enquiry.client_name && enquiry.client_name !== 'Unknown' && (
+            <span className="text-[11px] text-gray-600">· {enquiry.client_name}</span>
           )}
           <StatusPill status={enquiry.status} />
-          {enquiry.pricing_status === 'complete' && enquiry.total_inc_vat != null && (
-            <span className="text-[11px] text-green-700 font-semibold">
-              {enquiry.currency} {Number(enquiry.total_inc_vat).toLocaleString()}
-            </span>
-          )}
+          {pricePart && <span className="text-[11px] font-semibold text-gray-700">{pricePart}</span>}
           {enquiry.pricing_status === 'missing' && (
-            <span className="text-[11px] text-amber-500 font-medium">unpriced</span>
+            <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">unpriced</span>
           )}
         </div>
+        {meta && <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{meta}</p>}
         {enquiry.next_action && (
-          <p className="text-[11px] text-gray-400 mt-0.5">→ {enquiry.next_action}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Next: {enquiry.next_action}</p>
         )}
       </div>
-      <span className="text-[10px] text-gray-300 flex-shrink-0 group-hover:text-gray-500">
+      <span className="text-[10px] text-gray-300 flex-shrink-0 group-hover:text-gray-500 mt-0.5">
         {enquiry.created_at
           ? new Date(enquiry.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
           : ''}
