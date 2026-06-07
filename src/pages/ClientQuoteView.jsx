@@ -200,6 +200,9 @@ export default function ClientQuoteView() {
           </div>
         )}
 
+        {/* Documents */}
+        <DocumentsSection token={token} quote={quote} />
+
         {/* Response actions */}
         {!confirmed && (
           <div style={s.section}>
@@ -272,6 +275,93 @@ export default function ClientQuoteView() {
         </div>
       </Card>
     </Page>
+  )
+}
+
+function DocumentsSection({ token, quote }) {
+  const [downloading, setDownloading] = useState(null)
+
+  async function downloadBlob(path, filename) {
+    setDownloading(filename)
+    try {
+      const res = await fetch(`${API}${path}`)
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert(`Download failed: ${e.message}`)
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  const hasPrice = quote.total_inc_vat != null && Number(quote.total_inc_vat) > 0
+  const hasDeposit = quote.deposit_percent != null || quote.deposit_amount != null
+
+  const docs = [
+    {
+      key: 'quote-pdf',
+      label: 'Quote Summary (PDF)',
+      description: 'Your quote with pricing, specification, and payment terms.',
+      available: true,
+      filename: `quote-${quote.quote_number || quote.quote_id?.slice(0, 8)}.pdf`,
+      path: `/quotes/view/${token}/quote.pdf`,
+    },
+    {
+      key: 'deposit-invoice',
+      label: 'Deposit Invoice (PDF)',
+      description: 'Invoice for deposit payment to confirm your order.',
+      available: hasPrice && hasDeposit && quote.client_response === 'accepted',
+      unavailableReason: !hasPrice ? 'Available once quote is priced'
+        : !hasDeposit ? 'No deposit terms set'
+        : 'Available after you accept the quote',
+      filename: `deposit-invoice-${quote.quote_number || quote.quote_id?.slice(0, 8)}.pdf`,
+      path: `/quotes/view/${token}/deposit-invoice.pdf`,
+    },
+  ]
+
+  return (
+    <div style={s.section}>
+      <div style={s.sectionTitle}>Documents</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {docs.map(doc => (
+          <div key={doc.key} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 16px', borderRadius: 8,
+            border: `1px solid ${doc.available ? '#e5e7eb' : '#f3f4f6'}`,
+            background: doc.available ? '#fff' : '#fafafa',
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: doc.available ? '#111827' : '#9ca3af' }}>{doc.label}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                {doc.available ? doc.description : doc.unavailableReason}
+              </div>
+            </div>
+            {doc.available ? (
+              <button
+                onClick={() => downloadBlob(doc.path, doc.filename)}
+                disabled={downloading === doc.filename}
+                style={{
+                  padding: '7px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: downloading === doc.filename ? '#f3f4f6' : '#f9fafb',
+                  border: '1px solid #e5e7eb', color: '#374151',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {downloading === doc.filename ? 'Downloading…' : '↓ Download'}
+              </button>
+            ) : (
+              <span style={{ fontSize: 11, color: '#d1d5db', flexShrink: 0 }}>Not available</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

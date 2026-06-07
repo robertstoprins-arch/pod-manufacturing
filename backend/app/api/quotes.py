@@ -1,15 +1,18 @@
 """
 API: Quotes — commercial pipeline
 
-GET    /quotes                list all (filter: ?status= ?client_id= ?pod_spec_id=)
-POST   /quotes                create (201)
-GET    /quotes/{id}           get
-PUT    /quotes/{id}           update
-DELETE /quotes/{id}           delete (204)
-PATCH  /quotes/{id}/status    status transition with auto-logic
-GET    /quotes/{id}/events    event history
-POST   /quotes/{id}/events    add manual event/note
+GET    /quotes                          list all (filter: ?status= ?client_id= ?pod_spec_id=)
+POST   /quotes                          create (201)
+GET    /quotes/{id}                     get
+PUT    /quotes/{id}                     update
+DELETE /quotes/{id}                     delete (204)
+PATCH  /quotes/{id}/status              status transition with auto-logic
+GET    /quotes/{id}/events              event history
+POST   /quotes/{id}/events              add manual event/note
+GET    /quotes/{id}/email-preview       build default email draft (generates portal token if missing)
+POST   /quotes/{id}/send-to-client      send quote email, update status to "sent"
 """
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -20,7 +23,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Quote, QuoteEvent
+from app.models import AccountSettings, Quote, QuoteEvent
+from app.api.email_service import send_email
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -531,3 +535,245 @@ def update_payment_status(quote_id: uuid.UUID, body: PaymentStatusIn, db: Db):
     db.commit()
     db.refresh(quote)
     return quote
+
+
+# ── Quote Email ───────────────────────────────────────────────────────────────
+
+FRONTEND_URL_DEFAULT = "https://pod-manufacturing.vercel.app"
+
+
+def _ensure_client_token(quote: Quote, db: Session) -> uuid.UUID:
+    """Generate a 30-day client portal token if the quote doesn't already have one."""
+    if not quote.client_token or (
+        quote.client_token_expires_at and quote.client_token_expires_at < _now()
+    ):
+        quote.client_token = uuid.uuid4()
+        quote.client_token_expires_at = _now() + timedelta(days=30)
+        db.add(QuoteEvent(
+            quote_id=quote.id,
+            event_type="client_link_generated",
+            old_status=quote.status,
+            new_status=quote.status,
+            note="Client portal token auto-generated for email send",
+            created_by="system",
+        ))
+    return quote.client_token
+
+
+def _build_portal_url(token: uuid.UUID) -> str:
+    base = os.environ.get("FRONTEND_URL", FRONTEND_URL_DEFAULT).rstrip("/")
+    return f"{base}/quote-view/{token}"
+
+
+def _get_settings(db: Session) -> AccountSettings | None:
+    return db.query(AccountSettings).first()
+
+
+def _build_email_html(quote: Quote, body_text: str, portal_url: str, settings: AccountSettings | None) -> str:
+    company_name  = (settings and settings.company_name)  or "Top-R Solutions"
+    company_email = (settings and settings.company_email) or "quotes@top-r.com"
+    company_phone = (settings and settings.company_phone) or ""
+
+    price_line = ""
+    if quote.total_inc_vat and float(quote.total_inc_vat) > 0:
+        currency = quote.currency or "EUR"
+        price_line = f"""
+        <tr>
+          <td style="padding:8px 0;border-top:1px solid #e5e7eb;">
+            <strong>Total (inc. VAT):</strong> {currency} {float(quote.total_inc_vat):,.2f}
+          </td>
+        </tr>"""
+    elif quote.spec_snapshot and quote.spec_snapshot.get("pricing_estimate", {}).get("status") == "estimated":
+        pe = quote.spec_snapshot["pricing_estimate"]
+        currency = quote.currency or "EUR"
+        price_line = f"""
+        <tr>
+          <td style="padding:8px 0;border-top:1px solid #e5e7eb;">
+            <em>Indicative estimate: {currency} {pe.get('total_inc_vat', 0):,.0f} inc. VAT</em>
+          </td>
+        </tr>"""
+
+    body_html = body_text.replace("\n", "<br>")
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;color:#111;background:#f9fafb;margin:0;padding:0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;border:1px solid #e5e7eb;padding:32px;">
+        <tr><td style="border-bottom:2px solid #16a34a;padding-bottom:16px;margin-bottom:16px;">
+          <h2 style="color:#16a34a;margin:0;">{company_name}</h2>
+        </td></tr>
+        <tr><td style="padding:24px 0;">
+          <p style="margin:0 0 16px 0;">{body_html}</p>
+        </td></tr>
+        <tr><td>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:8px 0;">
+                <strong>Quote Reference:</strong> {quote.quote_number or str(quote.id)[:8].upper()}
+              </td>
+            </tr>
+            {price_line}
+          </table>
+        </td></tr>
+        <tr><td style="padding:24px 0 8px 0;text-align:center;">
+          <a href="{portal_url}"
+             style="background:#16a34a;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;">
+            View Your Quote
+          </a>
+        </td></tr>
+        <tr><td style="padding:16px 0 0 0;font-size:12px;color:#6b7280;border-top:1px solid #e5e7eb;">
+          <p style="margin:4px 0;">{company_name}</p>
+          {"<p style='margin:4px 0;'>" + company_email + "</p>" if company_email else ""}
+          {"<p style='margin:4px 0;'>" + company_phone + "</p>" if company_phone else ""}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
+def _default_subject(quote: Quote) -> str:
+    ref = quote.quote_number or str(quote.id)[:8].upper()
+    name = f" for {quote.client_name}" if quote.client_name else ""
+    return f"Your Quote{name} — {ref}"
+
+
+def _default_body(quote: Quote, portal_url: str) -> str:
+    name = quote.client_name or "there"
+    ref  = quote.quote_number or str(quote.id)[:8].upper()
+
+    has_price = quote.total_inc_vat and float(quote.total_inc_vat) > 0
+    pe = (quote.spec_snapshot or {}).get("pricing_estimate", {})
+    has_estimate = pe.get("status") == "estimated"
+
+    if has_price:
+        currency = quote.currency or "EUR"
+        price_note = f"The total price is {currency} {float(quote.total_inc_vat):,.2f} inc. VAT."
+    elif has_estimate:
+        currency = quote.currency or "EUR"
+        price_note = f"We have included an indicative estimate of {currency} {pe.get('total_inc_vat', 0):,.0f} inc. VAT based on your specification. A firm price will follow once we confirm all details."
+    else:
+        price_note = "We are reviewing your specification and will confirm pricing shortly."
+
+    return (
+        f"Hi {name},\n\n"
+        f"Thank you for your enquiry. Please find your quote ({ref}) at the link below.\n\n"
+        f"{price_note}\n\n"
+        f"You can review and respond to the quote using the button below. "
+        f"If you have any questions, please don't hesitate to get in touch.\n\n"
+        f"Best regards"
+    )
+
+
+class EmailPreviewOut(BaseModel):
+    to: str | None
+    subject: str
+    body: str
+    html_preview: str
+    client_portal_url: str
+    has_price: bool
+    is_indicative: bool
+    quote_ref: str | None
+
+
+class SendToClientIn(BaseModel):
+    subject: str
+    body: str
+    follow_up_days: int = 3
+
+
+class SendToClientOut(BaseModel):
+    ok: bool
+    quote_id: uuid.UUID
+    status: str
+    sent_at: datetime | None
+    email_status: str
+    email_message: str
+    client_portal_url: str
+
+
+@router.get("/{quote_id}/email-preview", response_model=EmailPreviewOut)
+def email_preview(quote_id: uuid.UUID, db: Db):
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if not quote:
+        raise HTTPException(404, "Quote not found")
+
+    token = _ensure_client_token(quote, db)
+    db.commit()
+    db.refresh(quote)
+
+    portal_url = _build_portal_url(token)
+    settings   = _get_settings(db)
+    subject    = _default_subject(quote)
+    body       = _default_body(quote, portal_url)
+    html       = _build_email_html(quote, body, portal_url, settings)
+
+    has_price    = bool(quote.total_inc_vat and float(quote.total_inc_vat) > 0)
+    pe_status    = (quote.spec_snapshot or {}).get("pricing_estimate", {}).get("status")
+    is_indicative = (not has_price) and pe_status == "estimated"
+
+    return EmailPreviewOut(
+        to=quote.client_email,
+        subject=subject,
+        body=body,
+        html_preview=html,
+        client_portal_url=portal_url,
+        has_price=has_price,
+        is_indicative=is_indicative,
+        quote_ref=quote.quote_number,
+    )
+
+
+@router.post("/{quote_id}/send-to-client", response_model=SendToClientOut)
+def send_to_client(quote_id: uuid.UUID, body: SendToClientIn, db: Db):
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if not quote:
+        raise HTTPException(404, "Quote not found")
+    if not quote.client_email:
+        raise HTTPException(400, "Quote has no client email address. Add one before sending.")
+
+    token = _ensure_client_token(quote, db)
+    portal_url = _build_portal_url(token)
+    settings   = _get_settings(db)
+    html       = _build_email_html(quote, body.body, portal_url, settings)
+
+    result = send_email(
+        to=quote.client_email,
+        subject=body.subject,
+        html_body=html,
+        text_body=body.body,
+        reply_to=(settings and settings.company_email) or None,
+    )
+
+    now = _now()
+    old_status = quote.status
+    quote.sent_at = now
+    quote.follow_up_at = now + timedelta(days=body.follow_up_days)
+    if quote.status not in ("accepted", "converted"):
+        quote.status = "sent"
+
+    note = (
+        f"Quote emailed to {quote.client_email}. "
+        f"Email status: {result.status}. "
+        f"Subject: {body.subject}"
+    )
+    if result.message_id:
+        note += f" (message_id: {result.message_id})"
+
+    _add_event(db, quote, "quote_sent", old_status, quote.status, note, "internal")
+    db.commit()
+    db.refresh(quote)
+
+    return SendToClientOut(
+        ok=True,
+        quote_id=quote.id,
+        status=quote.status,
+        sent_at=quote.sent_at,
+        email_status=result.status,
+        email_message=result.message,
+        client_portal_url=portal_url,
+    )

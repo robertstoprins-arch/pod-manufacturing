@@ -173,6 +173,15 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         and float(q.total_inc_vat) > 0
     )
 
+    # Sent quotes past their follow_up_at date (but not yet followed up / responded)
+    follow_up_due_count = sum(
+        1 for q in quotes
+        if q.status == "sent"
+        and q.follow_up_at
+        and q.follow_up_at.replace(tzinfo=timezone.utc) <= now
+        and not q.client_responded_at
+    )
+
     # Per-quote RFQ aggregates
     rfq_awaiting_response = 0
     rfq_responded = 0
@@ -201,6 +210,7 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         {"key": "accepted_quotes",      "label": "Accepted",                 "count": counts["accepted"],                                         "severity": "info"},
         {"key": "awaiting_deposit",     "label": "Awaiting deposit",         "count": awaiting_deposit_count, "severity": "warning" if awaiting_deposit_count > 0 else "info"},
         {"key": "rfq_awaiting_response","label": "RFQs awaiting response",   "count": rfq_awaiting_response,                                      "severity": "info"},
+        {"key": "follow_up_due",        "label": "Follow-up due",            "count": follow_up_due_count,    "severity": "warning" if follow_up_due_count > 0 else "info"},
     ]
 
     # ── Action required ────────────────────────────────────────────────────────
@@ -266,6 +276,19 @@ def get_dashboard_summary(db: Db):  # noqa: C901
                 "info", "QUOTE_DOCUMENTS_NOT_GENERATED",
                 "Generate client quote portal link so client can view and respond",
                 "open_quote", can_execute=True)
+
+        # FOLLOW_UP_DUE — sent quote past follow-up date with no client response
+        if (q.status == "sent"
+                and q.follow_up_at
+                and q.follow_up_at.replace(tzinfo=timezone.utc) <= now
+                and not q.client_responded_at):
+            days_overdue = (now - q.follow_up_at.replace(tzinfo=timezone.utc)).days
+            add("follow-up-due",
+                "Follow-up due",
+                f"{ref}: sent {days_overdue + 3}+ days ago with no client response. Follow up now.",
+                "warning", "FOLLOW_UP_DUE",
+                "Contact client to follow up on the quote",
+                "open_quote", requires_human=True)
 
         # QUOTE_PRICE_MISSING
         if q.status in ("draft", "sent", "follow_up_due") and (not q.total_inc_vat or float(q.total_inc_vat) == 0):
@@ -456,20 +479,22 @@ def get_dashboard_summary(db: Db):  # noqa: C901
     next_actions = []
     if counts["changes_requested"] > 0:
         next_actions.append({"priority": 1, "action": "Review client-requested changes",          "count": counts["changes_requested"],             "blocker_code": "CLIENT_CHANGES_REQUESTED"})
+    if follow_up_due_count > 0:
+        next_actions.append({"priority": 2, "action": "Follow up on sent quotes",                 "count": follow_up_due_count,                     "blocker_code": "FOLLOW_UP_DUE"})
     if awaiting_deposit_count > 0:
-        next_actions.append({"priority": 2, "action": "Follow up deposit payments",               "count": awaiting_deposit_count,                  "blocker_code": "DEPOSIT_NOT_PAID"})
+        next_actions.append({"priority": 3, "action": "Follow up deposit payments",               "count": awaiting_deposit_count,                  "blocker_code": "DEPOSIT_NOT_PAID"})
     if ready_to_send_count > 0:
-        next_actions.append({"priority": 3, "action": "Send priced quotes to clients",            "count": ready_to_send_count,                     "blocker_code": "QUOTE_READY_TO_SEND"})
+        next_actions.append({"priority": 4, "action": "Send priced quotes to clients",            "count": ready_to_send_count,                     "blocker_code": "QUOTE_READY_TO_SEND"})
     if estimate_available_count > 0:
-        next_actions.append({"priority": 4, "action": "Review and confirm auto-estimates",        "count": estimate_available_count,                "blocker_code": "QUOTE_ESTIMATE_USED"})
+        next_actions.append({"priority": 5, "action": "Review and confirm auto-estimates",        "count": estimate_available_count,                "blocker_code": "QUOTE_ESTIMATE_USED"})
     if input_incomplete_count > 0:
-        next_actions.append({"priority": 5, "action": "Follow up incomplete enquiries (no dims)", "count": input_incomplete_count,                  "blocker_code": "QUOTE_INPUT_INCOMPLETE"})
+        next_actions.append({"priority": 6, "action": "Follow up incomplete enquiries (no dims)", "count": input_incomplete_count,                  "blocker_code": "QUOTE_INPUT_INCOMPLETE"})
     if unpriced_count > 0:
-        next_actions.append({"priority": 6, "action": "Complete pricing for unpriced quotes",     "count": unpriced_count,                          "blocker_code": "QUOTE_PRICE_MISSING"})
+        next_actions.append({"priority": 7, "action": "Complete pricing for unpriced quotes",     "count": unpriced_count,                          "blocker_code": "QUOTE_PRICE_MISSING"})
     if bom_rfq_health["supplier_award_missing"] > 0:
-        next_actions.append({"priority": 7, "action": "Compare supplier responses and award",     "count": bom_rfq_health["supplier_award_missing"], "blocker_code": "SUPPLIER_AWARD_MISSING"})
+        next_actions.append({"priority": 8, "action": "Compare supplier responses and award",     "count": bom_rfq_health["supplier_award_missing"], "blocker_code": "SUPPLIER_AWARD_MISSING"})
     if bom_rfq_health["rfq_not_sent"] > 0:
-        next_actions.append({"priority": 8, "action": "Send pending RFQs to suppliers",           "count": bom_rfq_health["rfq_not_sent"],           "blocker_code": "RFQ_NOT_SENT"})
+        next_actions.append({"priority": 9, "action": "Send pending RFQs to suppliers",           "count": bom_rfq_health["rfq_not_sent"],           "blocker_code": "RFQ_NOT_SENT"})
 
     # ── Agent-readable state ───────────────────────────────────────────────────
 
@@ -488,6 +513,7 @@ def get_dashboard_summary(db: Db):  # noqa: C901
     else:                                   system_status = "needs_attention"
 
     if counts["changes_requested"] > 0:         recommended_focus = "client_changes"
+    elif follow_up_due_count > 0:              recommended_focus = "follow_up_sent_quotes"
     elif awaiting_deposit_count > 0:            recommended_focus = "deposit_and_payments"
     elif ready_to_send_count > 0:               recommended_focus = "send_quotes"
     elif estimate_available_count > 0:          recommended_focus = "confirm_estimates"
@@ -506,9 +532,10 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         "recommended_focus":       recommended_focus,
         "quote_counts":            counts,
         "active_quote_count":      len(active_quotes),
-        "input_incomplete_count":  input_incomplete_count,
+        "input_incomplete_count":   input_incomplete_count,
         "estimate_available_count": estimate_available_count,
-        "ready_to_send_count":     ready_to_send_count,
+        "ready_to_send_count":      ready_to_send_count,
+        "follow_up_due_count":      follow_up_due_count,
     }
 
     return {

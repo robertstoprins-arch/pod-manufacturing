@@ -206,6 +206,9 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [rfqErr, setRfqErr] = useState('')
   const [rfqSuppliers, setRfqSuppliers] = useState([])
   const [showSendModal, setShowSendModal] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailPreview, setEmailPreview] = useState(null)
+  const [emailLoading, setEmailLoading] = useState(false)
   const [rfqResponses, setRfqResponses] = useState(null)
   const [responsesLoading, setResponsesLoading] = useState(false)
   const [clientLink, setClientLink] = useState(quote.client_token ? `${window.location.origin}/quote-view/${quote.client_token}` : null)
@@ -362,6 +365,37 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
       setCompErr(e.message ?? 'Failed to load comparison')
     } finally {
       setCompLoading(false)
+    }
+  }
+
+  async function openEmailModal() {
+    setEmailLoading(true)
+    setErr('')
+    try {
+      const data = await api(`/quotes/${quote.id}/email-preview`)
+      setEmailPreview(data)
+      setShowEmailModal(true)
+    } catch (e) {
+      setErr(e.message ?? 'Failed to load email preview')
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  async function handleSendEmail(subject, body, followUpDays) {
+    try {
+      const result = await api(`/quotes/${quote.id}/send-to-client`, {
+        method: 'POST',
+        body: JSON.stringify({ subject, body, follow_up_days: followUpDays }),
+      })
+      setQuote(q => ({ ...q, status: result.status, sent_at: result.sent_at, client_token: result.client_portal_url.split('/').pop() }))
+      onUpdated({ ...quote, status: result.status, sent_at: result.sent_at })
+      const evs = await api(`/quotes/${quote.id}/events`)
+      setEvents(evs)
+      setShowEmailModal(false)
+      return result
+    } catch (e) {
+      throw e
     }
   }
 
@@ -546,9 +580,16 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                 <div className="text-xs font-semibold text-gray-700">Client Quote Portal</div>
                 <div className="text-[11px] text-gray-400 mt-0.5">Private link for client to view and accept this quote</div>
               </div>
-              <Btn small onClick={generateClientLink} disabled={generatingLink}>
-                {generatingLink ? 'Generating…' : clientLink ? 'Regenerate Link' : 'Generate Link'}
-              </Btn>
+              <div className="flex gap-2">
+                <Btn small onClick={generateClientLink} disabled={generatingLink}>
+                  {generatingLink ? 'Generating…' : clientLink ? 'Regenerate Link' : 'Generate Link'}
+                </Btn>
+                {quote.client_email && (
+                  <Btn small variant="success" onClick={openEmailModal} disabled={emailLoading}>
+                    {emailLoading ? 'Loading…' : 'Send to Client'}
+                  </Btn>
+                )}
+              </div>
             </div>
             {clientLink && (
               <div className="flex items-center gap-2">
@@ -884,7 +925,125 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
           )}
         </div>
       )}
+
+      {showEmailModal && emailPreview && (
+        <SendQuoteEmailModal
+          preview={emailPreview}
+          onClose={() => setShowEmailModal(false)}
+          onSend={handleSendEmail}
+        />
+      )}
     </Modal>
+  )
+}
+
+// ── Send Quote Email Modal ────────────────────────────────────────────────────
+
+function SendQuoteEmailModal({ preview, onClose, onSend }) {
+  const [subject, setSubject]     = useState(preview.subject)
+  const [body, setBody]           = useState(preview.body)
+  const [followUpDays, setFollowUpDays] = useState(3)
+  const [sending, setSending]     = useState(false)
+  const [result, setResult]       = useState(null)
+  const [err, setErr]             = useState('')
+
+  async function handleSend() {
+    setSending(true)
+    setErr('')
+    try {
+      const res = await onSend(subject, body, followUpDays)
+      setResult(res)
+    } catch (e) {
+      setErr(e.message ?? 'Send failed')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (result) {
+    const ok = result.email_status === 'sent'
+    const logged = result.email_status === 'logged_not_sent'
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+          <div className={`text-center space-y-2`}>
+            <div className={`text-3xl ${ok ? 'text-green-500' : logged ? 'text-amber-500' : 'text-red-500'}`}>
+              {ok ? '✓' : logged ? '⚠' : '✕'}
+            </div>
+            <div className="font-semibold text-gray-900">
+              {ok ? 'Quote sent!' : logged ? 'Quote not sent — no email provider' : 'Send failed'}
+            </div>
+            <div className="text-xs text-gray-500">{result.email_message}</div>
+            {logged && (
+              <div className="text-[11px] bg-amber-50 border border-amber-200 rounded p-2 text-amber-700">
+                Set <code className="font-mono">RESEND_API_KEY</code> in Render environment variables to enable email delivery.
+                The quote status has been updated to "sent" and the event was logged.
+              </div>
+            )}
+          </div>
+          <div className="flex justify-center">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 bg-gray-900 text-white text-sm rounded font-medium hover:bg-gray-700">
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <div className="font-semibold text-gray-900">Send Quote to Client</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {preview.to ?? 'No email on file'}
+              {preview.has_price ? '' : preview.is_indicative ? ' · includes indicative estimate' : ' · no price yet'}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-300 hover:text-gray-600 text-xl leading-none mt-0.5">✕</button>
+        </div>
+        <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">To</label>
+            <div className="text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">{preview.to ?? <span className="text-red-500">No email address</span>}</div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Subject</label>
+            <input value={subject} onChange={e => setSubject(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-gray-500" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Message</label>
+            <textarea value={body} onChange={e => setBody(e.target.value)} rows={7}
+              className="w-full bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-gray-500 resize-none" />
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded p-2.5">
+            <div className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide mb-1">Client Portal Link</div>
+            <code className="text-[11px] text-blue-600 break-all">{preview.client_portal_url}</code>
+            <div className="text-[10px] text-blue-300 mt-1">This link will be embedded in the email. The client can view and respond to the quote.</div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Follow-up reminder (days)</label>
+            <input type="number" min={1} max={30} value={followUpDays} onChange={e => setFollowUpDays(Number(e.target.value))}
+              className="w-24 bg-white border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-gray-500" />
+          </div>
+          {err && <p className="text-xs text-red-500">{err}</p>}
+        </div>
+        <div className="px-6 py-3 border-t border-gray-100 flex justify-end gap-2 shrink-0">
+          <button type="button" onClick={onClose}
+            className="px-3 py-1.5 text-sm rounded font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200">
+            Cancel
+          </button>
+          <button type="button" onClick={handleSend} disabled={sending || !preview.to}
+            className="px-3 py-1.5 text-sm rounded font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-40">
+            {sending ? 'Sending…' : 'Send Quote'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
