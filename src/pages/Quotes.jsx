@@ -638,73 +638,148 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
             </div>
           )}
 
-          {/* Client portal */}
-          <div className="mt-3 border border-gray-100 rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs font-semibold text-gray-700">Client Quote Portal</div>
-                <div className="text-[11px] text-gray-400 mt-0.5">Private link for client to view and accept this quote</div>
+          {/* ── Documents ─────────────────────────────────────────────────── */}
+          {(() => {
+            const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+            const hasPrice = quote.total_inc_vat != null && Number(quote.total_inc_vat) > 0
+            const hasToken = !!quote.client_token
+            const hasDepositConfig = hasPrice && quote.deposit_percent != null
+            const accepted = quote.client_response === 'accepted' || quote.status === 'accepted'
+
+            const docRows = [
+              {
+                label: 'Client Quote PDF',
+                available: hasToken || hasPrice,
+                href: hasToken ? `${apiBase}/quotes/view/${quote.client_token}/client-quote.pdf` : null,
+                note: !hasToken && !hasPrice ? 'Generate portal link first' : null,
+              },
+              {
+                label: 'Deposit Invoice PDF',
+                available: hasDepositConfig,
+                onClick: hasDepositConfig ? downloadDepositInvoice : null,
+                note: !hasDepositConfig ? (!hasPrice ? 'Quote not priced' : 'Set deposit % first') : null,
+              },
+              {
+                label: 'Deposit Invoice (client)',
+                available: hasDepositConfig && accepted,
+                href: hasToken && hasDepositConfig && accepted
+                  ? `${apiBase}/quotes/view/${quote.client_token}/deposit-invoice.pdf`
+                  : null,
+                note: !accepted ? 'Available after client accepts' : (!hasDepositConfig ? 'Set deposit % first' : null),
+              },
+            ]
+
+            return (
+              <div className="mt-3 border border-gray-100 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Documents</div>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {docRows.map(doc => (
+                    <div key={doc.label} className="flex items-center justify-between px-3 py-2">
+                      <span className={`text-xs ${doc.available ? 'text-gray-700' : 'text-gray-400'}`}>{doc.label}</span>
+                      {doc.available ? (
+                        doc.href ? (
+                          <a href={doc.href} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] text-blue-600 hover:underline font-medium">
+                            Open ↗
+                          </a>
+                        ) : (
+                          <button type="button" onClick={doc.onClick}
+                            className="text-[11px] text-blue-600 hover:underline font-medium cursor-pointer"
+                            disabled={invoiceDownloading}>
+                            {invoiceDownloading ? 'Downloading…' : 'Download'}
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-[10px] text-gray-300">{doc.note ?? 'Not available'}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Btn small onClick={generateClientLink} disabled={generatingLink}>
-                  {generatingLink ? 'Generating…' : clientLink ? 'Regenerate Link' : 'Generate Link'}
-                </Btn>
-                {quote.client_email && (
-                  <Btn small variant="success" onClick={openEmailModal} disabled={emailLoading}>
-                    {emailLoading ? 'Loading…' : 'Send to Client'}
-                  </Btn>
-                )}
+            )
+          })()}
+
+          {/* ── Client Delivery / Tracking ─────────────────────────────── */}
+          {(() => {
+            const deliveryStatus = (() => {
+              if (quote.client_response === 'accepted')          return { label: 'Accepted',          cls: 'bg-green-50 text-green-700' }
+              if (quote.client_response === 'declined')          return { label: 'Declined',           cls: 'bg-red-50 text-red-600'   }
+              if (quote.client_response === 'changes_requested') return { label: 'Changes Requested',  cls: 'bg-amber-50 text-amber-700' }
+              if (quote.client_viewed_at)                        return { label: 'Viewed',             cls: 'bg-blue-50 text-blue-700'  }
+              if (quote.sent_at)                                 return { label: 'Sent, not viewed',   cls: 'bg-amber-50 text-amber-600' }
+              return                                                    { label: 'Not sent',            cls: 'bg-gray-100 text-gray-500'  }
+            })()
+
+            return (
+              <div className="mt-3 border border-gray-100 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Client Delivery / Tracking</div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${deliveryStatus.cls}`}>{deliveryStatus.label}</span>
+                </div>
+                <div className="px-3 py-2 space-y-2">
+                  {/* Email + actions */}
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] text-gray-500">
+                      {quote.client_email
+                        ? <span className="font-medium text-gray-700">{quote.client_email}</span>
+                        : <span className="text-red-400">No email on file</span>}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Btn small variant="secondary" onClick={generateClientLink} disabled={generatingLink}>
+                        {generatingLink ? '…' : clientLink ? 'Regen Link' : 'Generate Link'}
+                      </Btn>
+                      {quote.client_email && (
+                        <Btn small variant="success" onClick={openEmailModal} disabled={emailLoading}>
+                          {emailLoading ? '…' : 'Send to Client'}
+                        </Btn>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Portal link */}
+                  {clientLink && (
+                    <div className="flex items-center gap-2">
+                      <code className="text-[10px] text-blue-600 bg-blue-50 rounded px-2 py-1 flex-1 truncate">{clientLink}</code>
+                      <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(clientLink)}>Copy</Btn>
+                    </div>
+                  )}
+                  {quote.client_token && (
+                    <div className="flex gap-3">
+                      <a href={`/quote-view/${quote.client_token}`} target="_blank" rel="noopener noreferrer"
+                        className="text-[11px] text-blue-600 hover:underline">Open portal ↗</a>
+                    </div>
+                  )}
+
+                  {/* Timeline */}
+                  <div className="text-[11px] text-gray-500 space-y-0.5 border-t border-gray-50 pt-2 mt-1">
+                    {quote.sent_at && <div>Sent: {formatDate(quote.sent_at)}{quote.follow_up_at && <span className="text-gray-400"> · Follow-up: {formatDate(quote.follow_up_at)}</span>}</div>}
+                    {quote.client_viewed_at ? (
+                      <div>
+                        First viewed: {formatDate(quote.client_viewed_at)}
+                        {(quote.client_view_count ?? 0) > 1 && (
+                          <span> · Last: {formatDate(quote.client_last_viewed_at)} · <span className="font-medium">{quote.client_view_count} views</span></span>
+                        )}
+                        {(quote.client_view_count ?? 0) === 1 && <span className="text-gray-400"> · 1 view</span>}
+                      </div>
+                    ) : quote.sent_at ? (
+                      <div className="text-amber-500 font-medium">Client has not opened the portal yet</div>
+                    ) : null}
+                    {quote.client_responded_at && (
+                      <div>
+                        Responded: {formatDate(quote.client_responded_at)} ·{' '}
+                        <span className={`font-medium ${quote.client_response === 'accepted' ? 'text-green-600' : quote.client_response === 'declined' ? 'text-red-500' : 'text-amber-600'}`}>
+                          {quote.client_response === 'accepted' ? 'Accepted' : quote.client_response === 'declined' ? 'Declined' : 'Changes Requested'}
+                        </span>
+                      </div>
+                    )}
+                    {!quote.sent_at && <div className="text-gray-400">Quote not yet sent to client.</div>}
+                  </div>
+                </div>
               </div>
-            </div>
-            {clientLink && (
-              <div className="flex items-center gap-2">
-                <code className="text-[11px] text-blue-600 bg-blue-50 rounded px-2 py-1 flex-1 truncate">{clientLink}</code>
-                <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(clientLink)}>Copy</Btn>
-              </div>
-            )}
-            {quote.client_token && (
-              <div className="flex gap-2 flex-wrap">
-                <a
-                  href={`/quote-view/${quote.client_token}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-blue-600 hover:underline"
-                >
-                  Open portal ↗
-                </a>
-                <span className="text-[11px] text-gray-300">·</span>
-                <a
-                  href={`/api/quotes/view/${quote.client_token}/client-quote.pdf`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-blue-600 hover:underline"
-                >
-                  Client quote PDF ↗
-                </a>
-              </div>
-            )}
-            {quote.sent_at && (
-              <div className="text-[11px] text-gray-500">
-                Sent: {formatDate(quote.sent_at)}
-                {quote.follow_up_at && <span> · Follow-up: {formatDate(quote.follow_up_at)}</span>}
-              </div>
-            )}
-            {quote.client_viewed_at ? (
-              <div className="text-[11px] text-gray-500">
-                First viewed: {formatDate(quote.client_viewed_at)}
-                {quote.client_view_count > 1 && (
-                  <span> · Last viewed: {formatDate(quote.client_last_viewed_at)} · {quote.client_view_count} views</span>
-                )}
-                {quote.client_responded_at && (
-                  <span> · Response: <span className={`font-medium ${quote.client_response === 'accepted' ? 'text-green-600' : quote.client_response === 'declined' ? 'text-red-500' : 'text-amber-600'}`}>
-                    {quote.client_response === 'accepted' ? 'Accepted' : quote.client_response === 'declined' ? 'Declined' : 'Changes Requested'}
-                  </span></span>
-                )}
-              </div>
-            ) : quote.sent_at ? (
-              <div className="text-[11px] text-amber-500">Not yet viewed by client</div>
-            ) : null}
-          </div>
+            )
+          })()}
         </div>
       )}
 

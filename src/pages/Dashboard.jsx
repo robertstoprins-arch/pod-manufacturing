@@ -9,6 +9,7 @@ const BLOCKER_LABELS = {
   QUOTE_ESTIMATE_USED:           'Estimate ready',
   QUOTE_READY_TO_SEND:           'Ready to send',
   QUOTE_DOCUMENTS_NOT_GENERATED: 'No portal link',
+  QUOTE_SENT_NOT_VIEWED:         'Sent, not viewed',
   FOLLOW_UP_DUE:                 'Follow-up due',
   CLIENT_CHANGES_REQUESTED:      'Changes req.',
   DEPOSIT_NOT_PAID:              'Awaiting deposit',

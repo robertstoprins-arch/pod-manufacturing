@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Client, Quote, QuoteEvent
+from app.models import Client, PodSpec, Quote, QuoteEvent
 from app.product_templates import get_template, list_active_templates
 
 router = APIRouter(prefix="/enquiry", tags=["enquiry"])
@@ -198,6 +198,33 @@ def submit_enquiry(body: EnquiryIn, db: Db):
     # Compute pricing estimate
     pricing_estimate = _estimate_price(template, answers)
 
+    # Extract totals from estimate to populate the Quote price columns directly.
+    # Without this the dashboard sees EUR— even when an estimate was calculated.
+    total_ex_vat  = None
+    total_inc_vat = None
+    if pricing_estimate and pricing_estimate.get("status") == "estimated":
+        total_ex_vat  = pricing_estimate.get("total_ex_vat")
+        total_inc_vat = pricing_estimate.get("total_inc_vat")
+
+    # Create a minimal PodSpec so the quote has pod_spec_id populated.
+    # This enables the RFQ tab, prevents "No pod spec" dashboard warnings,
+    # and gives the internal team a starting point to add build-ups.
+    _w_f = float(w) if w else None
+    _l_f = float(l) if l else None
+    _h_f = float(h) if h else None
+    pod_spec = PodSpec(
+        name   = title,
+        geometry = {
+            "width_m":  _w_f,
+            "length_m": _l_f,
+            "height_m": _h_f,
+            "source":   "enquiry",
+        },
+        status = "draft",
+    )
+    db.add(pod_spec)
+    db.flush()
+
     ref = _next_quote_number(db)
 
     quote = Quote(
@@ -209,6 +236,9 @@ def submit_enquiry(body: EnquiryIn, db: Db):
         status       = "draft",
         lead_source  = "website",
         currency     = "EUR",
+        total_ex_vat  = total_ex_vat,
+        total_inc_vat = total_inc_vat,
+        pod_spec_id  = pod_spec.id,
         notes        = notes_text,
         spec_snapshot = {
             "product_template_id":      body.product_template_id,
@@ -229,7 +259,7 @@ def submit_enquiry(body: EnquiryIn, db: Db):
 
     db.add(QuoteEvent(
         quote_id   = quote.id,
-        event_type = "enquiry_received",
+        event_type = "quote_created_from_enquiry",
         old_status = None,
         new_status = "draft",
         note       = f"Website enquiry from {body.email} via template '{body.product_template_id}'",

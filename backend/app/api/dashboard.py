@@ -44,14 +44,22 @@ def _next_action_for(q: Quote) -> str | None:
     if not q.total_inc_vat or float(q.total_inc_vat) == 0:
         return "Complete pricing"
     if q.status == "draft":
+        # Web enquiries with an auto-estimate are ready to review and send
+        pe_status = (q.spec_snapshot or {}).get("pricing_estimate", {}).get("status")
+        if q.lead_source == "website" and pe_status == "estimated":
+            return "Review estimate and send quote to client"
         return "Send to client"
+    if q.status == "sent":
+        if not q.client_viewed_at:
+            return "Follow up — client has not viewed quote yet"
+        return "Awaiting client response"
     if q.status == "changes_requested":
         return "Review client requested changes"
     if q.status == "accepted":
         if q.payment_status not in ("deposit_received", "paid_in_full"):
             return "Generate deposit invoice / mark deposit received"
         if not q.pod_spec_id:
-            return "Generate BOM"
+            return "Generate BOM for procurement"
     reqs = q.rfq_requests or []
     if reqs:
         pending = [r for r in reqs if r.status == "pending"]
@@ -149,13 +157,14 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         if not q.total_inc_vat or float(q.total_inc_vat) == 0
     )
 
-    # Web enquiries with auto-estimate available but not yet manually priced
+    # Web enquiries with auto-estimate that are still in draft (ready to review + send)
     estimate_available_count = sum(
         1 for q in active_quotes
         if q.lead_source == "website"
         and q.spec_snapshot
         and (q.spec_snapshot.get("pricing_estimate") or {}).get("status") == "estimated"
-        and (not q.total_inc_vat or float(q.total_inc_vat) == 0)
+        and q.status == "draft"
+        and q.total_inc_vat and float(q.total_inc_vat) > 0
     )
 
     # Draft quotes that have pricing and are ready to send
@@ -270,27 +279,32 @@ def get_dashboard_summary(db: Db):  # noqa: C901
                     "Contact client to confirm dimensions and update the enquiry",
                     "open_quote", can_suggest=True)
 
-        # QUOTE_ESTIMATE_USED — auto-estimate available but no manual pricing yet
+        # QUOTE_ESTIMATE_USED — auto-estimate populated; quote ready to review and send
         if (q.lead_source == "website"
                 and q.spec_snapshot
                 and (q.spec_snapshot.get("pricing_estimate") or {}).get("status") == "estimated"
-                and (not q.total_inc_vat or float(q.total_inc_vat) == 0)):
+                and q.total_inc_vat and float(q.total_inc_vat) > 0
+                and q.status == "draft"):
             pe = q.spec_snapshot["pricing_estimate"]
             est_total = pe.get("total_inc_vat", 0)
             add("estimate-available",
-                "Auto-estimate ready — review and confirm pricing",
-                f"{ref}: indicative estimate €{est_total:,.0f} inc VAT generated from enquiry answers.",
+                "Indicative estimate ready — review and send to client",
+                f"{ref}: estimate €{est_total:,.0f} inc VAT from enquiry. Review, adjust if needed, then send.",
                 "info", "QUOTE_ESTIMATE_USED",
-                f"Review estimate (€{est_total:,.0f} inc VAT) and confirm or revise pricing",
+                "Review estimate and send quote to client",
                 "open_quote", can_suggest=True)
 
-        # QUOTE_READY_TO_SEND — priced but still in draft
+        # QUOTE_READY_TO_SEND — priced/estimated but still in draft
         if q.status == "draft" and q.total_inc_vat and float(q.total_inc_vat) > 0:
-            add("ready-to-send",
-                "Quote ready to send to client",
-                f"{ref}: priced at {q.currency} {float(q.total_inc_vat):,.0f} but still in draft.",
+            pe_status = (q.spec_snapshot or {}).get("pricing_estimate", {}).get("status")
+            is_estimate = q.lead_source == "website" and pe_status == "estimated"
+            label  = "Indicative quote ready to send" if is_estimate else "Quote ready to send to client"
+            detail = (f"{ref}: indicative estimate {q.currency} {float(q.total_inc_vat):,.0f} inc VAT — review and send."
+                      if is_estimate else
+                      f"{ref}: priced at {q.currency} {float(q.total_inc_vat):,.0f} but still in draft.")
+            add("ready-to-send", label, detail,
                 "info", "QUOTE_READY_TO_SEND",
-                "Review and send quote to client",
+                "Review estimate and send to client" if is_estimate else "Review and send quote to client",
                 "open_quote", can_suggest=True)
 
         # QUOTE_DOCUMENTS_NOT_GENERATED — sent but no client portal link
@@ -371,10 +385,10 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         # BOM_NOT_GENERATED
         if q.status == "accepted" and q.pod_spec_id is None:
             add("bom",
-                "BOM not generated",
-                f"{ref}: accepted but no pod spec or BOM linked.",
+                "Pod spec not linked",
+                f"{ref}: accepted but no pod spec linked — BOM cannot be generated.",
                 "warning", "BOM_NOT_GENERATED",
-                "Create pod spec and generate BOM",
+                "Link or create pod spec to enable BOM generation",
                 "open_quote", requires_human=True)
 
         # RFQ_NOT_SENT
@@ -497,20 +511,29 @@ def get_dashboard_summary(db: Db):  # noqa: C901
 
     document_status = []
     for q in quotes[:10]:
-        has_pricing = q.total_inc_vat is not None and float(q.total_inc_vat) > 0
+        has_pricing      = q.total_inc_vat is not None and float(q.total_inc_vat) > 0
         has_deposit_config = has_pricing and q.deposit_percent is not None
-        has_bom = q.pod_spec_id is not None
-        rfq_reqs = q.rfq_requests or []
+        has_bom          = q.pod_spec_id is not None
+        has_token        = bool(getattr(q, "client_token", None))
+        rfq_reqs         = q.rfq_requests or []
+        # Distinguish enquiry estimate (pod_spec exists but no build-ups) from full BOM
+        pe_status = (q.spec_snapshot or {}).get("pricing_estimate", {}).get("status")
+        if not has_bom:
+            bom_status = "not_applicable"
+        elif pe_status == "estimated" and q.lead_source == "website":
+            bom_status = "on_demand"   # indicative estimate — BOM needs internal review
+        else:
+            bom_status = "available"
         document_status.append({
             "quote_id":    str(q.id),
             "reference":   q.quote_number or str(q.id)[:8],
             "client_name": q.client_name or "Unknown",
             "status":      q.status,
             "documents": {
-                "deposit_invoice_pdf": "on_demand"     if has_deposit_config else "not_applicable",
-                "bom":                 "available"     if has_bom            else "not_applicable",
-                "rfq_json":            "available"     if rfq_reqs           else "not_applicable",
-                "client_quote_pdf":    "not_applicable",
+                "client_quote_pdf":    "on_demand"  if has_token or has_pricing else "not_applicable",
+                "deposit_invoice_pdf": "on_demand"  if has_deposit_config       else "not_applicable",
+                "bom":                 bom_status,
+                "rfq_json":            "available"  if rfq_reqs                 else "not_applicable",
             },
         })
 
