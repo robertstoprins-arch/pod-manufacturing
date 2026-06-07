@@ -153,6 +153,46 @@ export default function ClientQuoteView() {
           </div>
         )}
 
+        {/* What's Included */}
+        {quote.included_items?.length > 0 && (() => {
+          const catLabels = {
+            structure: 'Structure', external_finish: 'External Finish',
+            internal_finish: 'Internal Finish', openings: 'Openings',
+            services: 'Services', foundation: 'Foundation', delivery: 'Delivery',
+          }
+          const byCategory = quote.included_items.reduce((acc, item) => {
+            const cat = item.category || 'other'
+            if (!acc[cat]) acc[cat] = []
+            acc[cat].push(item.description)
+            return acc
+          }, {})
+          return (
+            <div style={s.section}>
+              <div style={s.sectionTitle}>What's Included</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+                {Object.entries(byCategory).map(([cat, items]) => (
+                  <div key={cat} style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                      {catLabels[cat] ?? cat}
+                    </div>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                      {items.map((desc, i) => (
+                        <li key={i} style={{ fontSize: 12, color: '#374151', paddingBottom: 4, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <span style={{ color: '#6ee7b7', fontWeight: 700, flexShrink: 0, marginTop: 1 }}>✓</span>
+                          {desc}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 10, fontStyle: 'italic' }}>
+                Provisional list based on your enquiry. Final specification confirmed on order.
+              </p>
+            </div>
+          )
+        })()}
+
         {/* Pricing */}
         <div style={s.section}>
           <div style={s.sectionTitle}>Pricing</div>

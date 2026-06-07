@@ -58,8 +58,9 @@ class ClientQuoteOut(BaseModel):
     deposit_amount: float | None
     status: str
     expires_at: datetime | None
-    notes: str | None          # shown only if non-internal (kept simple)
-    spec_summary: dict | None  # from spec_snapshot — client-safe subset
+    notes: str | None                  # shown only if non-internal (kept simple)
+    spec_summary: dict | None          # from spec_snapshot — client-safe subset
+    included_items: list | None = None # provisional breakdown — descriptions only, no rates
     already_responded: bool
     client_response: str | None
     client_viewed_at: datetime | None
@@ -117,8 +118,10 @@ def get_client_quote(token: uuid.UUID, db: Db):
 
     # Build client-safe spec summary from snapshot
     spec_summary = None
+    included_items = None
     if quote.spec_snapshot:
         spec_summary = _build_spec_summary(quote.spec_snapshot)
+        included_items = _build_included_items(quote.spec_snapshot)
 
     return ClientQuoteOut(
         quote_id=quote.id,
@@ -135,6 +138,7 @@ def get_client_quote(token: uuid.UUID, db: Db):
         expires_at=quote.client_token_expires_at,
         notes=quote.notes,
         spec_summary=spec_summary,
+        included_items=included_items,
         already_responded=bool(quote.client_responded_at),
         client_response=quote.client_response,
         client_viewed_at=quote.client_viewed_at,
@@ -191,8 +195,10 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
 
     # Return updated view
     spec_summary = None
+    included_items = None
     if quote.spec_snapshot:
         spec_summary = _build_spec_summary(quote.spec_snapshot)
+        included_items = _build_included_items(quote.spec_snapshot)
 
     return ClientQuoteOut(
         quote_id=quote.id,
@@ -209,6 +215,7 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
         expires_at=quote.client_token_expires_at,
         notes=quote.notes,
         spec_summary=spec_summary,
+        included_items=included_items,
         already_responded=True,
         client_response=quote.client_response,
         client_viewed_at=quote.client_viewed_at,
@@ -225,6 +232,16 @@ def _spec_fields(snap: dict | None) -> dict:
     if isinstance(qa, dict):
         return qa
     return snap
+
+
+def _build_included_items(snap: dict | None) -> list | None:
+    """Return client-safe list of included items (description + category only, no rates)."""
+    if not snap:
+        return None
+    breakdown = snap.get("pricing_estimate", {}).get("provisional_breakdown")
+    if not breakdown:
+        return None
+    return [{"category": item.get("category"), "description": item.get("description")} for item in breakdown]
 
 
 def _build_spec_summary(snap: dict | None) -> dict | None:

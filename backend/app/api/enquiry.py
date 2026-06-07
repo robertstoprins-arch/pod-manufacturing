@@ -261,8 +261,15 @@ def _option_label(template: dict, field_key: str, value: str) -> str | None:
 def _estimate_price(template: dict, answers: dict) -> dict | None:
     """
     Compute an indicative pricing estimate from questionnaire answers.
+
     Returns None if the template has no pricing_estimates config.
-    Returns a dict with status='incomplete' if dimensions are missing.
+    Returns status='incomplete' if dimensions are missing.
+    Returns status='estimated' with full provisional_breakdown on success.
+
+    provisional_breakdown is a list of line items covering every priced
+    component — structure: {code, category, description, qty, unit,
+    unit_rate_ex_vat, subtotal_ex_vat}.  The internal team sees this as
+    the indicative BOM; the client portal shows descriptions only.
     """
     pe = template.get("pricing_estimates")
     if not pe:
@@ -272,8 +279,8 @@ def _estimate_price(template: dict, answers: dict) -> dict | None:
     l = answers.get("length_m")
     if not w or not l:
         return {
-            "status": "incomplete",
-            "reason": "Dimensions not provided — estimate cannot be calculated.",
+            "status":     "incomplete",
+            "reason":     "Dimensions not provided — estimate cannot be calculated.",
             "disclaimer": pe.get("disclaimer", ""),
         }
 
@@ -282,85 +289,197 @@ def _estimate_price(template: dict, answers: dict) -> dict | None:
         l   = float(l)
         h   = float(answers.get("height_m") or 2.5)
         qty = int(answers.get("quantity") or 1)
-        floor_area   = round(w * l, 2)
-        base_rate    = pe["base_rate_per_m2_ex_vat"]
-        total        = floor_area * base_rate
-        addons_applied: list[str] = []
-        addons = pe.get("addons", {})
 
-        # External finish
-        ext_finish = answers.get("external_finish")
-        if ext_finish and ext_finish in addons:
-            addon = addons[ext_finish]
-            cost  = floor_area * addon.get("per_m2", 0) + addon.get("flat", 0)
-            if cost:
-                total += cost
-                addons_applied.append(f"{ext_finish}: +€{cost:,.0f}")
+        floor_area = round(w * l, 2)
+        base_rate  = pe["base_rate_per_m2_ex_vat"]
+        addons     = pe.get("addons", {})
+
+        breakdown: list[dict] = []
+
+        def _line(code, category, description, line_qty, unit, unit_rate):
+            sub = round(line_qty * unit_rate, 2)
+            breakdown.append({
+                "code":             code,
+                "category":         category,
+                "description":      description,
+                "qty":              round(line_qty, 3),
+                "unit":             unit,
+                "unit_rate_ex_vat": round(unit_rate, 2),
+                "subtotal_ex_vat":  sub,
+            })
+            return sub
+
+        total = _line(
+            "pod_base", "structure",
+            f"Pod base structure ({w}m × {l}m)",
+            floor_area, "m²", base_rate,
+        )
 
         # Height premium
         hp = addons.get("height_premium")
         if hp and h > hp["threshold_m"]:
-            total += hp["flat"]
-            addons_applied.append(f"Height >{hp['threshold_m']}m: +€{hp['flat']:,.0f}")
+            total += _line("height_premium", "structure",
+                           f"Height premium (>{hp['threshold_m']}m)",
+                           1, "set", hp["flat"])
+
+        # External finish
+        ext_finish = answers.get("external_finish")
+        if ext_finish:
+            addon = addons.get(ext_finish)
+            if addon:
+                rate = addon.get("per_m2", 0)
+                flat = addon.get("flat", 0)
+                label = addon.get("label", ext_finish)
+                if rate:
+                    total += _line(f"ext_{ext_finish}", "external_finish",
+                                   label, floor_area, "m²", rate)
+                elif flat:
+                    total += _line(f"ext_{ext_finish}", "external_finish",
+                                   label, 1, "set", flat)
+
+        # Internal finish (uplifts above basic)
+        int_finish = answers.get("internal_finish_package")
+        if int_finish == "standard":
+            a = addons.get("internal_standard")
+            if a:
+                total += _line("int_standard", "internal_finish",
+                               a.get("label", "Standard Internal Finish"),
+                               floor_area, "m²", a["per_m2"])
+        elif int_finish == "premium":
+            a = addons.get("internal_premium")
+            if a:
+                total += _line("int_premium", "internal_finish",
+                               a.get("label", "Premium Internal Finish"),
+                               floor_area, "m²", a["per_m2"])
+
+        # Doors
+        door_count = int(answers.get("door_count") or 0)
+        door_type  = answers.get("door_type") or ""
+        if door_count > 0:
+            door_key = {
+                "single":  "door_single",
+                "double":  "door_double",
+                "sliding": "door_sliding",
+                "bi_fold": "door_bi_fold",
+            }.get(door_type, "door_default")
+            a = addons.get(door_key, addons.get("door_default", {}))
+            rate = a.get("per_unit", 700)
+            label = a.get("label", addons.get("door_default", {}).get("label", "Door"))
+            total += _line("doors", "openings", label, door_count, "each", rate)
+
+        # Windows
+        window_count = int(answers.get("window_count") or 0)
+        window_type  = answers.get("window_type") or ""
+        if window_count > 0:
+            win_key = {
+                "fixed":     "window_fixed",
+                "casement":  "window_casement",
+                "tilt_turn": "window_tilt_turn",
+            }.get(window_type, "window_default")
+            a = addons.get(win_key, addons.get("window_default", {}))
+            rate = a.get("per_unit", 420)
+            label = a.get("label", addons.get("window_default", {}).get("label", "Window"))
+            total += _line("windows", "openings", label, window_count, "each", rate)
+
+        # Rooflights
+        rooflight_count = int(answers.get("rooflight_count") or 0)
+        if rooflight_count > 0:
+            a = addons.get("rooflight_unit", {})
+            rate = a.get("per_unit", 780)
+            total += _line("rooflights", "openings",
+                           a.get("label", "Rooflight / Skylight"),
+                           rooflight_count, "each", rate)
 
         # Heating
         heating = answers.get("heating_option")
-        if heating == "underfloor" and "underfloor_heating" in addons:
-            cost = floor_area * addons["underfloor_heating"]["per_m2"]
-            total += cost
-            addons_applied.append(f"Underfloor heating: +€{cost:,.0f}")
-        elif heating == "air_source" and "air_source_heat_pump" in addons:
-            cost = addons["air_source_heat_pump"]["flat"]
-            total += cost
-            addons_applied.append(f"Air source heat pump: +€{cost:,.0f}")
+        if heating == "underfloor":
+            a = addons.get("underfloor_heating", {})
+            total += _line("heating_ufh", "services",
+                           a.get("label", "Underfloor Heating"),
+                           floor_area, "m²", a.get("per_m2", 80))
+        elif heating == "air_source":
+            a = addons.get("air_source_heat_pump", {})
+            total += _line("heating_ashp", "services",
+                           a.get("label", "Air Source Heat Pump"),
+                           1, "set", a.get("flat", 3000))
 
-        # MVHR
-        if answers.get("ventilation_option") == "mvhr" and "mvhr" in addons:
-            cost = addons["mvhr"]["flat"]
-            total += cost
-            addons_applied.append(f"MVHR: +€{cost:,.0f}")
+        # Ventilation
+        if answers.get("ventilation_option") == "mvhr":
+            a = addons.get("mvhr", {})
+            total += _line("ventilation_mvhr", "services",
+                           a.get("label", "MVHR Ventilation Unit"),
+                           1, "set", a.get("flat", 1500))
 
         # Electrical
-        if answers.get("electrical_package") == "full" and "full_electrical" in addons:
-            cost = addons["full_electrical"]["flat"]
-            total += cost
-            addons_applied.append(f"Full electrical package: +€{cost:,.0f}")
-
-        # Delivery
-        delivery = answers.get("delivery_install_option")
-        if delivery == "supply_install" and "supply_install" in addons:
-            cost = addons["supply_install"]["flat"]
-            total += cost
-            addons_applied.append(f"Supply & install: +€{cost:,.0f}")
-        elif delivery == "turnkey" and "turnkey" in addons:
-            cost = addons["turnkey"]["flat"]
-            total += cost
-            addons_applied.append(f"Turnkey package: +€{cost:,.0f}")
+        electrical = answers.get("electrical_package")
+        if electrical == "standard":
+            a = addons.get("standard_electrical", {})
+            total += _line("electrical_std", "services",
+                           a.get("label", "Standard Electrical Package"),
+                           1, "set", a.get("flat", 250))
+        elif electrical == "full":
+            a = addons.get("full_electrical", {})
+            total += _line("electrical_full", "services",
+                           a.get("label", "Full Electrical Package"),
+                           1, "set", a.get("flat", 500))
 
         # Foundation
-        if answers.get("foundation_option") == "screw_pile" and "screw_pile" in addons:
-            cost = addons["screw_pile"]["flat"]
-            total += cost
-            addons_applied.append(f"Screw pile foundation: +€{cost:,.0f}")
+        foundation = answers.get("foundation_option")
+        if foundation == "screw_pile":
+            a = addons.get("screw_pile", {})
+            total += _line("foundation_screw_pile", "foundation",
+                           a.get("label", "Screw Pile Foundation"),
+                           1, "set", a.get("flat", 2500))
+        elif foundation == "groundworks":
+            a = addons.get("foundation_groundworks", {})
+            total += _line("foundation_groundworks", "foundation",
+                           a.get("label", "Concrete Pad / Groundworks"),
+                           1, "set", a.get("flat", 3500))
+        elif foundation == "pad_stone":
+            a = addons.get("foundation_pad_stone", {})
+            total += _line("foundation_pad_stone", "foundation",
+                           a.get("label", "Pad Stone / Timber Frame"),
+                           1, "set", a.get("flat", 1200))
 
-        # Multiply by quantity
-        total_unit = total
-        total      = total * qty
-        vat_rate   = pe["vat_rate"]
-        vat        = total * vat_rate
+        # Delivery & install
+        delivery = answers.get("delivery_install_option")
+        if delivery == "supply_install":
+            a = addons.get("supply_install", {})
+            total += _line("delivery_install", "delivery",
+                           a.get("label", "Supply & Install"),
+                           1, "set", a.get("flat", 2000))
+        elif delivery == "turnkey":
+            a = addons.get("turnkey", {})
+            total += _line("delivery_turnkey", "delivery",
+                           a.get("label", "Turnkey Package"),
+                           1, "set", a.get("flat", 5000))
+
+        # Multiply by quantity (all breakdown lines are per-unit; multiply totals)
+        total_unit  = total
+        total_total = total * qty
+        vat_rate    = pe["vat_rate"]
+        vat         = total_total * vat_rate
+
+        # Build human-readable addons_applied list (backward compat with dashboard display)
+        addons_applied = [
+            f"{ln['description']}: €{ln['subtotal_ex_vat']:,.0f}"
+            for ln in breakdown
+            if ln["code"] != "pod_base"
+        ]
 
         return {
-            "status":             "estimated",
-            "floor_area_m2":      floor_area,
-            "quantity":           qty,
-            "unit_ex_vat":        round(total_unit, 2),
-            "total_ex_vat":       round(total, 2),
-            "total_inc_vat":      round(total + vat, 2),
-            "vat_amount":         round(vat, 2),
-            "vat_rate":           vat_rate,
-            "addons_applied":     addons_applied,
-            "calculation_notes":  f"€{base_rate}/m² base × {floor_area}m² × {qty} unit(s)",
-            "disclaimer":         pe.get("disclaimer", ""),
+            "status":              "estimated",
+            "floor_area_m2":       floor_area,
+            "quantity":            qty,
+            "unit_ex_vat":         round(total_unit, 2),
+            "total_ex_vat":        round(total_total, 2),
+            "total_inc_vat":       round(total_total + vat, 2),
+            "vat_amount":          round(vat, 2),
+            "vat_rate":            vat_rate,
+            "provisional_breakdown": breakdown,
+            "addons_applied":      addons_applied,
+            "calculation_notes":   f"€{base_rate}/m² base × {floor_area}m² × {qty} unit(s)",
+            "disclaimer":          pe.get("disclaimer", ""),
         }
 
     except (TypeError, ValueError) as exc:

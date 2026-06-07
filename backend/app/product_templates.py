@@ -441,19 +441,43 @@ OFFICE_POD: dict = {
         "base_rate_per_m2_ex_vat": 1200,
         "vat_rate": 0.23,
         "addons": {
-            "timber_clad":          {"per_m2": 150, "flat": 0},
-            "composite":            {"per_m2": 0,   "flat": 0},
-            "brick_slip":           {"per_m2": 200, "flat": 0},
-            "render":               {"per_m2": 0,   "flat": 0},
-            "corrugated_metal":     {"per_m2": -50, "flat": 0},
-            "height_premium":       {"threshold_m": 3.0, "flat": 500},
-            "underfloor_heating":   {"per_m2": 80,  "flat": 0},
-            "air_source_heat_pump": {"per_m2": 0,   "flat": 3000},
-            "mvhr":                 {"per_m2": 0,   "flat": 1500},
-            "full_electrical":      {"per_m2": 0,   "flat": 500},
-            "supply_install":       {"per_m2": 0,   "flat": 2000},
-            "turnkey":              {"per_m2": 0,   "flat": 5000},
-            "screw_pile":           {"per_m2": 0,   "flat": 2500},
+            # External finish — per m² of floor area (used as proxy for cladding area)
+            "timber_clad":           {"per_m2": 150,  "flat": 0,    "label": "Timber Cladding"},
+            "composite":             {"per_m2": 0,    "flat": 0,    "label": "Composite Panel"},
+            "brick_slip":            {"per_m2": 200,  "flat": 0,    "label": "Brick Slip"},
+            "render":                {"per_m2": 0,    "flat": 0,    "label": "Render"},
+            "corrugated_metal":      {"per_m2": -50,  "flat": 0,    "label": "Corrugated Metal"},
+            # Height premium — flat uplift when internal height exceeds threshold
+            "height_premium":        {"threshold_m": 3.0, "flat": 500},
+            # Internal finish — per m² uplift above basic (basic = base rate inclusive)
+            "internal_standard":     {"per_m2": 55,   "flat": 0,    "label": "Standard Internal Finish"},
+            "internal_premium":      {"per_m2": 130,  "flat": 0,    "label": "Premium Internal Finish"},
+            # Openings — per unit allowances
+            "door_single":           {"per_unit": 650,              "label": "Single Door"},
+            "door_double":           {"per_unit": 1200,             "label": "Double / French Doors"},
+            "door_sliding":          {"per_unit": 1400,             "label": "Sliding Door"},
+            "door_bi_fold":          {"per_unit": 1600,             "label": "Bi-fold Door"},
+            "door_default":          {"per_unit": 700,              "label": "Door (type TBC)"},
+            "window_fixed":          {"per_unit": 380,              "label": "Fixed Window"},
+            "window_casement":       {"per_unit": 520,              "label": "Casement Window"},
+            "window_tilt_turn":      {"per_unit": 620,              "label": "Tilt & Turn Window"},
+            "window_default":        {"per_unit": 420,              "label": "Window (type TBC)"},
+            "rooflight_unit":        {"per_unit": 780,              "label": "Rooflight / Skylight"},
+            # Heating
+            "underfloor_heating":    {"per_m2": 80,   "flat": 0,    "label": "Underfloor Heating"},
+            "air_source_heat_pump":  {"per_m2": 0,    "flat": 3000, "label": "Air Source Heat Pump"},
+            # Ventilation
+            "mvhr":                  {"per_m2": 0,    "flat": 1500, "label": "MVHR Ventilation Unit"},
+            # Electrical
+            "standard_electrical":   {"per_m2": 0,    "flat": 250,  "label": "Standard Electrical Package"},
+            "full_electrical":        {"per_m2": 0,    "flat": 500,  "label": "Full Electrical Package"},
+            # Foundation
+            "foundation_groundworks":{"per_m2": 0,    "flat": 3500, "label": "Concrete Pad / Groundworks"},
+            "foundation_pad_stone":  {"per_m2": 0,    "flat": 1200, "label": "Pad Stone / Timber Frame"},
+            "screw_pile":            {"per_m2": 0,    "flat": 2500, "label": "Screw Pile Foundation"},
+            # Delivery & install
+            "supply_install":        {"per_m2": 0,    "flat": 2000, "label": "Supply & Install"},
+            "turnkey":               {"per_m2": 0,    "flat": 5000, "label": "Turnkey Package"},
         },
         "disclaimer": (
             "This is an indicative estimate only. "

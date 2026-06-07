@@ -509,17 +509,65 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                   )}
                   {pe?.status === 'estimated' && (
                     <div className="border-t border-blue-100 pt-2 mt-1">
-                      <div className="text-[10px] font-semibold text-blue-300 uppercase tracking-wide mb-1">Indicative Estimate</div>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
-                        <InfoRow label="Ex VAT">€{Number(pe.total_ex_vat).toLocaleString()}</InfoRow>
-                        <InfoRow label="Inc VAT">€{Number(pe.total_inc_vat).toLocaleString()}</InfoRow>
-                        <InfoRow label="Floor area">{pe.floor_area_m2} m²</InfoRow>
-                        <InfoRow label="Qty">{pe.quantity}</InfoRow>
+                      <div className="flex items-baseline justify-between mb-1">
+                        <div className="text-[10px] font-semibold text-blue-300 uppercase tracking-wide">Indicative Estimate</div>
+                        <div className="text-xs font-semibold text-gray-700">
+                          €{Number(pe.total_ex_vat).toLocaleString()} ex VAT
+                          <span className="text-[10px] text-gray-400 font-normal ml-1">(€{Number(pe.total_inc_vat).toLocaleString()} inc)</span>
+                        </div>
                       </div>
-                      {pe.addons_applied?.length > 0 && (
-                        <div className="text-[11px] text-blue-400 mt-1">{pe.addons_applied.join(' · ')}</div>
+                      <div className="text-[10px] text-gray-400 mb-2">{pe.floor_area_m2} m² · qty {pe.quantity}</div>
+                      {pe.provisional_breakdown?.length > 0 && (() => {
+                        const byCategory = pe.provisional_breakdown.reduce((acc, item) => {
+                          if (!acc[item.category]) acc[item.category] = []
+                          acc[item.category].push(item)
+                          return acc
+                        }, {})
+                        const catLabels = {
+                          structure: 'Structure', external_finish: 'External Finish',
+                          internal_finish: 'Internal Finish', openings: 'Openings',
+                          services: 'Services', foundation: 'Foundation', delivery: 'Delivery',
+                        }
+                        return (
+                          <div className="rounded border border-blue-100 overflow-hidden mb-2">
+                            <table className="w-full text-[10px]">
+                              <thead>
+                                <tr className="bg-blue-50 text-blue-400 uppercase tracking-wide">
+                                  <th className="px-2 py-1 text-left font-semibold">Item</th>
+                                  <th className="px-2 py-1 text-right font-semibold w-16">Qty</th>
+                                  <th className="px-2 py-1 text-right font-semibold w-10">Unit</th>
+                                  <th className="px-2 py-1 text-right font-semibold w-20">Subtotal</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.entries(byCategory).map(([cat, items]) => (
+                                  <>
+                                    <tr key={`cat-${cat}`} className="bg-blue-50/50">
+                                      <td colSpan={4} className="px-2 py-0.5 text-blue-300 font-semibold uppercase tracking-wide">{catLabels[cat] ?? cat}</td>
+                                    </tr>
+                                    {items.map((item, i) => (
+                                      <tr key={`${cat}-${i}`} className="border-t border-blue-50">
+                                        <td className="px-2 py-1 text-gray-600">{item.description}</td>
+                                        <td className="px-2 py-1 text-right text-gray-500">{item.qty}</td>
+                                        <td className="px-2 py-1 text-right text-gray-400">{item.unit}</td>
+                                        <td className="px-2 py-1 text-right text-gray-700 font-medium">€{Number(item.subtotal_ex_vat).toLocaleString()}</td>
+                                      </tr>
+                                    ))}
+                                  </>
+                                ))}
+                                <tr className="border-t-2 border-blue-200 bg-blue-50">
+                                  <td colSpan={3} className="px-2 py-1 font-semibold text-gray-700">Total ex VAT</td>
+                                  <td className="px-2 py-1 text-right font-semibold text-gray-900">€{Number(pe.total_ex_vat).toLocaleString()}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      })()}
+                      {!pe.provisional_breakdown?.length && pe.addons_applied?.length > 0 && (
+                        <div className="text-[11px] text-blue-400 mt-1 mb-2">{pe.addons_applied.join(' · ')}</div>
                       )}
-                      <div className="text-[10px] text-gray-400 mt-1 italic">{pe.disclaimer}</div>
+                      <div className="text-[10px] text-gray-400 italic">{pe.disclaimer}</div>
                     </div>
                   )}
                 </div>
