@@ -1,13 +1,30 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApi } from '../api/useApi'
 
-// ── Severity colour maps ──────────────────────────────────────────────────────
+// ── Issue pill labels (blocker_code → human label) ────────────────────────────
 
-const SEV_COLORS = {
-  info:    { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   dot: 'bg-blue-400'  },
-  warning: { bg: 'bg-amber-50',  border: 'border-amber-200',  text: 'text-amber-700',  dot: 'bg-amber-400' },
-  error:   { bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    dot: 'bg-red-400'   },
-  blocked: { bg: 'bg-red-100',   border: 'border-red-300',    text: 'text-red-800',    dot: 'bg-red-600'   },
+const BLOCKER_LABELS = {
+  QUOTE_PRICE_MISSING:           'Missing price',
+  QUOTE_INPUT_INCOMPLETE:        'No dimensions',
+  QUOTE_ESTIMATE_USED:           'Estimate ready',
+  QUOTE_READY_TO_SEND:           'Ready to send',
+  QUOTE_DOCUMENTS_NOT_GENERATED: 'No portal link',
+  FOLLOW_UP_DUE:                 'Follow-up due',
+  CLIENT_CHANGES_REQUESTED:      'Changes req.',
+  DEPOSIT_NOT_PAID:              'Awaiting deposit',
+  DEPOSIT_INVOICE_MISSING:       'No invoice config',
+  BOM_NOT_GENERATED:             'No BOM',
+  RFQ_NOT_SENT:                  'RFQ not sent',
+  SUPPLIER_RESPONSE_PENDING:     'Awaiting response',
+  SUPPLIER_AWARD_MISSING:        'Award missing',
+  READY_FOR_PRODUCTION_REVIEW:   'Ready',
+}
+
+const SEV_PILL = {
+  info:    'bg-blue-50 text-blue-700',
+  warning: 'bg-amber-100 text-amber-700',
+  error:   'bg-red-100 text-red-700',
+  blocked: 'bg-red-100 text-red-700',
 }
 
 const STATUS_LABELS = {
@@ -120,7 +137,7 @@ export default function DashboardPage({ setPage }) {
           badge={action_required.length}
           badgeColor="bg-amber-100 text-amber-700"
         >
-          <div className="space-y-2">
+          <div className="divide-y divide-gray-100 -mx-4 -mb-4">
             {action_required.map(item => (
               <ActionItem key={item.id} item={item} onOpen={goToQuotes} />
             ))}
@@ -257,35 +274,49 @@ function Section({ title, badge, badgeColor = 'bg-gray-100 text-gray-500', child
 }
 
 function ActionItem({ item, onOpen }) {
-  const c = SEV_COLORS[item.severity] || SEV_COLORS.info
+  const pillCls = SEV_PILL[item.severity] || SEV_PILL.info
+  const issueLabel = BLOCKER_LABELS[item.blocker_code] || item.title
+
+  const meta = [item.client_email, item.pod_type, item.dimensions].filter(Boolean).join(' · ')
+  const pricePart = item.price != null
+    ? `${item.currency} ${Number(item.price).toLocaleString()}`
+    : `${item.currency || '€'}—`
+
+  const deliveryLabel = {
+    supply_install: 'Supply & install',
+    turnkey: 'Turnkey',
+    supply_only: 'Supply only',
+  }
+  const leadTimePart = item.lead_time || '—'
+  const deliveryPart = deliveryLabel[item.delivery] || item.delivery || '—'
+
   return (
-    <div className={`flex items-start justify-between gap-3 rounded-lg border p-3 ${c.bg} ${c.border}`}>
-      <div className="flex items-start gap-2.5 min-w-0">
-        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${c.dot}`} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-900">{item.reference}</span>
-            {item.client_name && (
-              <span className="text-[11px] text-gray-500">{item.client_name}</span>
-            )}
-            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${c.bg} ${c.text} ${c.border}`}>
-              {item.blocker_code}
-            </span>
-          </div>
-          <p className={`text-[11px] mt-0.5 ${c.text}`}>{item.message}</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">→ {item.recommended_action}</p>
-          <div className="flex gap-3 mt-1 text-[10px] text-gray-400">
-            {item.agent_can_suggest && <span className="font-medium text-blue-500">Agent can suggest</span>}
-            {item.agent_can_execute && <span className="font-medium text-purple-500">Agent can execute</span>}
-            {item.requires_human_approval && <span>Requires human approval</span>}
-          </div>
+    <div className="flex items-start justify-between gap-3 px-4 py-2.5 hover:bg-gray-50">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-semibold text-gray-900">{item.reference}</span>
+          {item.client_name && item.client_name !== 'Unknown' && (
+            <span className="text-[11px] text-gray-600">· {item.client_name}</span>
+          )}
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${pillCls}`}>
+            {issueLabel}
+          </span>
         </div>
+        {meta && <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{meta}</p>}
+        <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">
+          <span className="font-semibold text-gray-700">{pricePart}</span>
+          {' · '}Lead time: {leadTimePart}
+          {' · '}Delivery: {deliveryPart}
+          {item.recommended_action && (
+            <> · Next: <span className="font-medium text-gray-700">{item.recommended_action}</span></>
+          )}
+        </p>
       </div>
       <button
         onClick={onOpen}
-        className="flex-shrink-0 text-[11px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white hover:bg-gray-50 text-gray-700 whitespace-nowrap shadow-sm"
+        className="flex-shrink-0 text-[10px] border border-gray-200 rounded px-2 py-1 bg-white hover:bg-gray-50 text-gray-500 whitespace-nowrap mt-0.5"
       >
-        Open →
+        Open
       </button>
     </div>
   )

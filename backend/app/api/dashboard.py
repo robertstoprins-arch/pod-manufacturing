@@ -80,8 +80,9 @@ def _make_action(
     requires_human: bool,
     can_suggest: bool,
     can_execute: bool,
+    context: dict | None = None,
 ) -> dict:
-    return {
+    d = {
         "id": f"{entity_id}-{id_suffix}",
         "entity_type": "quote",
         "entity_id": str(entity_id),
@@ -97,7 +98,17 @@ def _make_action(
         "requires_human_approval": requires_human,
         "agent_can_suggest": can_suggest,
         "agent_can_execute": can_execute,
+        "client_email": None,
+        "pod_type": None,
+        "dimensions": None,
+        "price": None,
+        "currency": "EUR",
+        "lead_time": None,
+        "delivery": None,
     }
+    if context:
+        d.update(context)
+    return d
 
 
 @router.get("/summary")
@@ -225,19 +236,33 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         ref = q.quote_number or str(q.id)[:8]
         cn = q.client_name
 
+        _fields = _spec_fields(q.spec_snapshot)
+        _w, _l = _fields.get("width_m"), _fields.get("length_m")
+        _h = _fields.get("height_m") or _fields.get("wall_height_m")
+        _dims = (f"{_w}m × {_l}m" + (f" × {_h}m H" if _h else "")) if _w and _l else None
+        _ctx = {
+            "client_email": q.client_email,
+            "pod_type": _fields.get("pod_type"),
+            "dimensions": _dims,
+            "price": float(q.total_inc_vat) if q.total_inc_vat and float(q.total_inc_vat) > 0 else None,
+            "currency": q.currency,
+            "lead_time": _fields.get("lead_time"),
+            "delivery": _fields.get("delivery_install_option"),
+        }
+
         def add(suffix, title, message, severity, blocker_code, recommended, action_key,
                 requires_human=False, can_suggest=True, can_execute=False):
             action_required.append(_make_action(
                 suffix, q.id, ref, cn, title, message, severity, blocker_code,
                 recommended, action_key, requires_human, can_suggest, can_execute,
+                context=_ctx,
             ))
 
         # QUOTE_INPUT_INCOMPLETE — web enquiry missing dimensions
         if (q.status == "draft"
                 and q.lead_source == "website"
                 and q.spec_snapshot):
-            f = _spec_fields(q.spec_snapshot)
-            if not f.get("width_m") and not f.get("length_m"):
+            if not _fields.get("width_m") and not _fields.get("length_m"):
                 add("input-incomplete",
                     "Enquiry missing dimensions",
                     f"{ref}: web enquiry received but no dimensions provided — cannot auto-price.",
