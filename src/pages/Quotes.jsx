@@ -662,16 +662,48 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                 <Btn small variant="secondary" onClick={() => navigator.clipboard.writeText(clientLink)}>Copy</Btn>
               </div>
             )}
-            {quote.client_viewed_at && (
+            {quote.client_token && (
+              <div className="flex gap-2 flex-wrap">
+                <a
+                  href={`/quote-view/${quote.client_token}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-blue-600 hover:underline"
+                >
+                  Open portal ↗
+                </a>
+                <span className="text-[11px] text-gray-300">·</span>
+                <a
+                  href={`/api/quotes/view/${quote.client_token}/client-quote.pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-blue-600 hover:underline"
+                >
+                  Client quote PDF ↗
+                </a>
+              </div>
+            )}
+            {quote.sent_at && (
               <div className="text-[11px] text-gray-500">
-                Viewed: {formatDate(quote.client_viewed_at)}
+                Sent: {formatDate(quote.sent_at)}
+                {quote.follow_up_at && <span> · Follow-up: {formatDate(quote.follow_up_at)}</span>}
+              </div>
+            )}
+            {quote.client_viewed_at ? (
+              <div className="text-[11px] text-gray-500">
+                First viewed: {formatDate(quote.client_viewed_at)}
+                {quote.client_view_count > 1 && (
+                  <span> · Last viewed: {formatDate(quote.client_last_viewed_at)} · {quote.client_view_count} views</span>
+                )}
                 {quote.client_responded_at && (
                   <span> · Response: <span className={`font-medium ${quote.client_response === 'accepted' ? 'text-green-600' : quote.client_response === 'declined' ? 'text-red-500' : 'text-amber-600'}`}>
                     {quote.client_response === 'accepted' ? 'Accepted' : quote.client_response === 'declined' ? 'Declined' : 'Changes Requested'}
                   </span></span>
                 )}
               </div>
-            )}
+            ) : quote.sent_at ? (
+              <div className="text-[11px] text-amber-500">Not yet viewed by client</div>
+            ) : null}
           </div>
         </div>
       )}

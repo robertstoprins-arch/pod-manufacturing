@@ -302,6 +302,18 @@ def get_dashboard_summary(db: Db):  # noqa: C901
                 "Generate client quote portal link so client can view and respond",
                 "open_quote", can_execute=True)
 
+        # QUOTE_SENT_NOT_VIEWED — sent with portal link but not yet opened
+        if (q.status == "sent"
+                and getattr(q, "client_token", None)
+                and q.sent_at
+                and not q.client_viewed_at):
+            add("sent-not-viewed",
+                "Quote sent — not yet viewed",
+                f"{ref}: portal link sent but client hasn't opened it yet.",
+                "info", "QUOTE_SENT_NOT_VIEWED",
+                "Follow up with client if not viewed within 24–48 hours",
+                "open_quote", can_suggest=True)
+
         # FOLLOW_UP_DUE — sent quote past follow-up date with no client response
         if (q.status == "sent"
                 and q.follow_up_at

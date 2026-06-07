@@ -64,6 +64,8 @@ class ClientQuoteOut(BaseModel):
     already_responded: bool
     client_response: str | None
     client_viewed_at: datetime | None
+    client_last_viewed_at: datetime | None = None
+    client_view_count: int = 0
 
 
 class ClientRespondIn(BaseModel):
@@ -110,11 +112,13 @@ def get_client_quote(token: uuid.UUID, db: Db):
     if quote.client_token_expires_at and quote.client_token_expires_at < now:
         raise HTTPException(410, "This quote link has expired. Please contact us for an updated link.")
 
-    # Record first view
+    # Record first and subsequent views
     if not quote.client_viewed_at:
         quote.client_viewed_at = now
-        _add_event(db, quote, "client_viewed_quote", None, None, None)
-        db.commit()
+    quote.client_last_viewed_at = now
+    quote.client_view_count = (quote.client_view_count or 0) + 1
+    _add_event(db, quote, "client_quote_viewed", None, f"View #{quote.client_view_count}", None)
+    db.commit()
 
     # Build client-safe spec summary from snapshot
     spec_summary = None
@@ -142,6 +146,8 @@ def get_client_quote(token: uuid.UUID, db: Db):
         already_responded=bool(quote.client_responded_at),
         client_response=quote.client_response,
         client_viewed_at=quote.client_viewed_at,
+        client_last_viewed_at=quote.client_last_viewed_at,
+        client_view_count=quote.client_view_count or 0,
     )
 
 
@@ -219,6 +225,8 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
         already_responded=True,
         client_response=quote.client_response,
         client_viewed_at=quote.client_viewed_at,
+        client_last_viewed_at=quote.client_last_viewed_at,
+        client_view_count=quote.client_view_count or 0,
     )
 
 
@@ -347,6 +355,12 @@ def get_client_quote_pdf(token: uuid.UUID, db: Db):
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router_public.get("/view/{token}/client-quote.pdf")
+def get_client_quote_pdf_v2(token: uuid.UUID, db: Db):
+    """Alias for quote.pdf — used by the client portal Documents section."""
+    return get_client_quote_pdf(token, db)
 
 
 @router_public.get("/view/{token}/deposit-invoice.pdf")

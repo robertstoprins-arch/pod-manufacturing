@@ -139,6 +139,8 @@ class QuoteOut(BaseModel):
     client_token: uuid.UUID | None
     client_token_expires_at: datetime | None
     client_viewed_at: datetime | None
+    client_last_viewed_at: datetime | None
+    client_view_count: int = 0
     client_responded_at: datetime | None
     client_response: str | None
     client_response_note: str | None

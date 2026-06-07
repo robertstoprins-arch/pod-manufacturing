@@ -440,6 +440,8 @@ class Quote(Base):
     client_token            = Column(Uuid(as_uuid=True), unique=True, nullable=True)
     client_token_expires_at = Column(DateTime(timezone=True))
     client_viewed_at        = Column(DateTime(timezone=True))
+    client_last_viewed_at   = Column(DateTime(timezone=True))
+    client_view_count       = Column(Integer, nullable=False, default=0)
     client_responded_at     = Column(DateTime(timezone=True))
     client_response         = Column(String(30))
     client_response_note    = Column(Text)
