@@ -105,7 +105,7 @@ export default function GetQuote() {
   const set = (key, value) => setAnswers(a => ({ ...a, [key]: value }))
   const steps = template.steps
   const currentStep = steps[stepIndex]
-  const currentFields = stepFields(template, currentStep.id)
+  const currentFields = stepFields(template, currentStep.id, { visibleTo: 'customer_visible' })
 
   const stepValid = currentFields
     .filter(f => f.required)

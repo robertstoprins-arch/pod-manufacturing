@@ -184,7 +184,7 @@ def _decompose_geometry(geom: dict):
     elements = decompose_pod(
         width_m=float(geom["width_m"]),
         length_m=float(geom["length_m"]),
-        wall_height_m=float(geom["wall_height_m"]),
+        wall_height_m=float(geom.get("wall_height_m") or geom.get("height_m", 2.7)),
         roof_type=geom.get("roof_type", "duo_pitch"),
         roof_pitch_deg=float(geom.get("roof_pitch_deg", 15.0)),
         openings=openings,

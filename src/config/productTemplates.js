@@ -5,6 +5,16 @@
  * The backend is the canonical source; this copy exists so the public
  * /get-quote form renders without an API round-trip on load.
  *
+ * Visibility flags (on each field):
+ *   customer_visible  — shown in the public /get-quote form
+ *   internal_visible  — shown in the internal Manufacture Designer / quote panel
+ *   pdf_visible       — included in the client quote PDF spec block
+ *   portal_visible    — shown in the client portal spec summary
+ *
+ * Fields marked customer_visible: false are internal-only (e.g. roof pitch,
+ * eaves height alias). GetQuote filters these out automatically via
+ * stepFields(..., { visibleTo: 'customer_visible' }).
+ *
  * Adding a new template:
  *   1. Define the template object below (same schema as OFFICE_POD).
  *   2. Add it to PRODUCT_TEMPLATES.
@@ -20,7 +30,7 @@ export const OFFICE_POD = {
   id: 'office_pod',
   name: 'Office Pod / Garden Pod',
   description: 'Insulated acoustic workspace, meeting pod, or garden room.',
-  version: '2.0.0',
+  version: '2.1.0',
   status: 'active',
 
   steps: [
@@ -37,11 +47,31 @@ export const OFFICE_POD = {
 
   fields: [
     // ── Contact ─────────────────────────────────────────────────────────
-    { key: 'first_name',   label: 'First name',    customer_label: 'First name',    type: 'text',  step: 'contact', required: true  },
-    { key: 'last_name',    label: 'Last name',     customer_label: 'Last name',     type: 'text',  step: 'contact', required: true  },
-    { key: 'email',        label: 'Email address', customer_label: 'Email address', type: 'email', step: 'contact', required: true  },
-    { key: 'phone',        label: 'Phone',         customer_label: 'Phone',         type: 'tel',   step: 'contact', required: false },
-    { key: 'company_name', label: 'Company name',  customer_label: 'Company name',  type: 'text',  step: 'contact', required: false },
+    {
+      key: 'first_name', label: 'First name', customer_label: 'First name',
+      type: 'text', step: 'contact', required: true,
+      customer_visible: true, internal_visible: false, pdf_visible: false, portal_visible: false,
+    },
+    {
+      key: 'last_name', label: 'Last name', customer_label: 'Last name',
+      type: 'text', step: 'contact', required: true,
+      customer_visible: true, internal_visible: false, pdf_visible: false, portal_visible: false,
+    },
+    {
+      key: 'email', label: 'Email address', customer_label: 'Email address',
+      type: 'email', step: 'contact', required: true,
+      customer_visible: true, internal_visible: false, pdf_visible: false, portal_visible: false,
+    },
+    {
+      key: 'phone', label: 'Phone', customer_label: 'Phone',
+      type: 'tel', step: 'contact', required: false,
+      customer_visible: true, internal_visible: false, pdf_visible: false, portal_visible: false,
+    },
+    {
+      key: 'company_name', label: 'Company name', customer_label: 'Company name',
+      type: 'text', step: 'contact', required: false,
+      customer_visible: true, internal_visible: false, pdf_visible: false, portal_visible: false,
+    },
 
     // ── Product ──────────────────────────────────────────────────────────
     {
@@ -58,6 +88,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'product_type',
       bom_variable: 'pod_type',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'quantity',
@@ -70,6 +101,7 @@ export const OFFICE_POD = {
       validation: { min: 1, max: 100 },
       pricing_variable: 'quantity',
       bom_variable: 'quantity',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
 
     // ── Dimensions ───────────────────────────────────────────────────────
@@ -84,6 +116,7 @@ export const OFFICE_POD = {
       validation: { min: 1.0, max: 10.0, step: 0.1 },
       pricing_variable: 'width_m',
       bom_variable: 'width',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'length_m',
@@ -96,10 +129,11 @@ export const OFFICE_POD = {
       validation: { min: 1.0, max: 15.0, step: 0.1 },
       pricing_variable: 'length_m',
       bom_variable: 'length',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'height_m',
-      label: 'Internal height (m)',
+      label: 'Height (m)',
       customer_label: 'Internal height (m)',
       type: 'number',
       step: 'dimensions',
@@ -108,6 +142,41 @@ export const OFFICE_POD = {
       validation: { min: 2.0, max: 4.5, step: 0.1 },
       pricing_variable: 'height_m',
       bom_variable: 'height',
+      // In the internal Manufacture Designer this maps to wall_height_m (eaves height).
+      // For customer-facing purposes these are treated as equivalent.
+      internal_designer_key: 'wall_height_m',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
+    },
+    // Internal-only: roof geometry used by the Manufacture Designer and drawing engine.
+    // Not shown on the public form (customer_visible: false).
+    {
+      key: 'roof_type',
+      label: 'Roof type',
+      customer_label: 'Roof type',
+      type: 'select_tag',
+      step: 'dimensions',
+      required: false,
+      default: 'duo_pitch',
+      options: [
+        { value: 'flat',      label: 'Flat'       },
+        { value: 'mono_pitch', label: 'Mono Pitch' },
+        { value: 'duo_pitch',  label: 'Duo Pitch'  },
+      ],
+      bom_variable: 'roof_type',
+      customer_visible: false, internal_visible: true, pdf_visible: false, portal_visible: false,
+    },
+    {
+      key: 'roof_pitch_deg',
+      label: 'Roof pitch (°)',
+      customer_label: 'Roof pitch (°)',
+      type: 'number',
+      step: 'dimensions',
+      required: false,
+      default: 15,
+      placeholder: 'e.g. 15',
+      validation: { min: 0, max: 89, step: 1 },
+      bom_variable: 'roof_pitch_deg',
+      customer_visible: false, internal_visible: true, pdf_visible: false, portal_visible: false,
     },
 
     // ── Openings ─────────────────────────────────────────────────────────
@@ -121,6 +190,7 @@ export const OFFICE_POD = {
       default: 1,
       validation: { min: 0, max: 10 },
       bom_variable: 'door_count',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'door_type',
@@ -136,6 +206,7 @@ export const OFFICE_POD = {
         { value: 'bi_fold',  label: 'Bi-fold Door' },
       ],
       bom_variable: 'door_type',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'window_count',
@@ -147,6 +218,7 @@ export const OFFICE_POD = {
       default: 2,
       validation: { min: 0, max: 20 },
       bom_variable: 'window_count',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'window_type',
@@ -161,6 +233,7 @@ export const OFFICE_POD = {
         { value: 'tilt_turn', label: 'Tilt & Turn' },
       ],
       bom_variable: 'window_type',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'rooflight_count',
@@ -172,6 +245,7 @@ export const OFFICE_POD = {
       default: 0,
       validation: { min: 0, max: 10 },
       bom_variable: 'rooflight_count',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
 
     // ── Finishes ─────────────────────────────────────────────────────────
@@ -191,6 +265,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'external_finish',
       bom_variable: 'external_finish',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'internal_finish_package',
@@ -206,6 +281,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'internal_finish',
       bom_variable: 'internal_finish_package',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
 
     // ── Services ─────────────────────────────────────────────────────────
@@ -224,6 +300,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'heating_option',
       bom_variable: 'heating_option',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'ventilation_option',
@@ -239,6 +316,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'ventilation_option',
       bom_variable: 'ventilation_option',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
     {
       key: 'electrical_package',
@@ -254,6 +332,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'electrical_package',
       bom_variable: 'electrical_package',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
 
     // ── Foundation ───────────────────────────────────────────────────────
@@ -272,6 +351,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'foundation_option',
       bom_variable: 'foundation_option',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
 
     // ── Delivery ─────────────────────────────────────────────────────────
@@ -289,6 +369,7 @@ export const OFFICE_POD = {
       ],
       pricing_variable: 'delivery_option',
       bom_variable: 'delivery_install_option',
+      customer_visible: true, internal_visible: true, pdf_visible: true, portal_visible: true,
     },
 
     // ── Review ───────────────────────────────────────────────────────────
@@ -300,6 +381,7 @@ export const OFFICE_POD = {
       step: 'review',
       required: false,
       placeholder: 'e.g. Dublin, Ireland',
+      customer_visible: true, internal_visible: true, pdf_visible: false, portal_visible: false,
     },
     {
       key: 'intended_use',
@@ -316,6 +398,7 @@ export const OFFICE_POD = {
         { value: 'office',      label: 'Office / Commercial' },
         { value: 'other',       label: 'Other'               },
       ],
+      customer_visible: true, internal_visible: true, pdf_visible: false, portal_visible: false,
     },
     {
       key: 'timeline',
@@ -331,6 +414,7 @@ export const OFFICE_POD = {
         { value: '12months', label: 'Within 12 months'    },
       ],
       pricing_variable: 'lead_time_preference',
+      customer_visible: true, internal_visible: true, pdf_visible: false, portal_visible: false,
     },
     {
       key: 'notes',
@@ -340,6 +424,7 @@ export const OFFICE_POD = {
       step: 'review',
       required: false,
       placeholder: 'Access constraints, site conditions, anything else we should know…',
+      customer_visible: true, internal_visible: true, pdf_visible: false, portal_visible: false,
     },
   ],
 
@@ -370,7 +455,15 @@ export function getTemplate(id) {
   return PRODUCT_TEMPLATES[id] ?? null
 }
 
-/** Returns all fields for a given step id. */
-export function stepFields(template, stepId) {
-  return template.fields.filter(f => f.step === stepId)
+/**
+ * Returns fields for a step.
+ * Pass visibleTo: 'customer_visible' | 'internal_visible' | 'pdf_visible' | 'portal_visible'
+ * to filter by visibility flag. Omit for all fields in the step.
+ */
+export function stepFields(template, stepId, { visibleTo } = {}) {
+  return template.fields.filter(f => {
+    if (f.step !== stepId) return false
+    if (visibleTo && f[visibleTo] === false) return false
+    return true
+  })
 }

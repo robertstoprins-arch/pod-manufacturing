@@ -70,7 +70,7 @@ const ELEMENT_LABELS = {
 const DEFAULT_FORM = {
   width_m: 3.0,
   length_m: 6.0,
-  wall_height_m: 2.7,
+  height_m: 2.7,       // canonical key — mapped to wall_height_m at API boundary
   roof_type: 'duo_pitch',
   roof_pitch_deg: 15,
   openings: [],
@@ -262,8 +262,10 @@ export default function PodDesigner() {
       const wallBu  = buildUps.find(b => b.id === assignments.ExternalWall)
       const floorBu = buildUps.find(b => b.id === assignments.Floor)
       const roofBu  = buildUps.find(b => b.id === assignments.Roof)
+      const { height_m, ...formRest } = form
       const payload = {
-        ...form,
+        ...formRest,
+        wall_height_m: height_m,   // drawing API uses engineering term wall_height_m
         openings: form.openings.map(({ x_offset_m, ...o }) => ({
           ...o,
           height_m: o.shape === 'circular' ? o.width_m : o.height_m,
@@ -314,7 +316,12 @@ export default function PodDesigner() {
   const loadSpec = async (spec) => {
     setSpecId(spec.id)
     setSpecName(spec.name)
-    setForm(spec.geometry)
+    const geom = spec.geometry
+    // Normalise to canonical key height_m — old specs stored wall_height_m
+    setForm({
+      ...geom,
+      height_m: geom.height_m ?? geom.wall_height_m ?? 2.7,
+    })
     setAssignments({
       ExternalWall: spec.wall_build_up_id ?? null,
       Floor:        spec.floor_build_up_id ?? null,
@@ -332,9 +339,11 @@ export default function PodDesigner() {
     setSaving(true)
     setSaveError(null)
     try {
+      // Store geometry with both keys for backward compat — BOM API reads wall_height_m
+      const geometry = { ...form, wall_height_m: form.height_m }
       const payload = {
         name: specName,
-        geometry: form,
+        geometry,
         wall_build_up_id:  assignments.ExternalWall,
         floor_build_up_id: assignments.Floor,
         roof_build_up_id:  assignments.Roof,
@@ -480,8 +489,10 @@ export default function PodDesigner() {
     setMfrPlanError(null)
     try {
       const wallBu = buildUps.find(b => b.id === assignments.ExternalWall)
+      const { height_m: mfrHeight, ...mfrFormRest } = form
       const payload = {
-        ...form,
+        ...mfrFormRest,
+        wall_height_m: mfrHeight,   // drawing API uses engineering term wall_height_m
         openings: form.openings.map(({ x_offset_m, ...o }) => ({
           ...o,
           height_m: o.shape === 'circular' ? o.width_m : o.height_m,
@@ -625,8 +636,8 @@ export default function PodDesigner() {
               <Field label="Length — N/S (m)">
                 <NumberInput value={form.length_m} onChange={v => set('length_m', v)} />
               </Field>
-              <Field label="Wall height / eaves (m)">
-                <NumberInput value={form.wall_height_m} onChange={v => set('wall_height_m', v)} />
+              <Field label="Height / eaves (m)">
+                <NumberInput value={form.height_m} onChange={v => set('height_m', v)} />
               </Field>
             </div>
           </div>

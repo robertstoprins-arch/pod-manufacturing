@@ -33,7 +33,7 @@ OFFICE_POD: dict = {
     "id": "office_pod",
     "name": "Office Pod / Garden Pod",
     "description": "Insulated acoustic workspace, meeting pod, or garden room.",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "status": "active",   # active | draft | archived
 
     # Steps shown in the multi-step form.
@@ -51,60 +51,56 @@ OFFICE_POD: dict = {
     ],
 
     # All fields in order.
-    # key          — internal variable name (used in answers JSON and BOM mapping)
-    # label        — short internal label
-    # customer_label — longer customer-facing prompt shown above the field
-    # type         — text | email | tel | number | select_card | select_tag | textarea
-    # step         — which step id this field belongs to
-    # required     — whether the field must have a value before advancing
-    # default      — initial value (None = empty)
-    # placeholder  — input hint text
-    # options      — list of {value, label, description?} for select types
-    # validation   — {min?, max?, step?} for number fields
-    # pricing_variable — name in the pricing engine this answer maps to
-    # bom_variable     — name in the BOM engine this answer maps to
+    # key               — canonical variable name (same key used in BOM, pricing, PDF, portal)
+    # label             — short internal label
+    # customer_label    — customer-facing prompt shown on the public form
+    # type              — text | email | tel | number | select_card | select_tag | textarea
+    # step              — which step id this field belongs to
+    # required          — whether the field must have a value before advancing
+    # default           — initial value (None = empty)
+    # placeholder       — input hint text
+    # options           — list of {value, label, description?} for select types
+    # validation        — {min?, max?, step?} for number fields
+    # pricing_variable  — name in the pricing engine this answer maps to
+    # bom_variable      — name in the BOM engine this answer maps to
+    # internal_designer_key — alias used in the internal Manufacture Designer
+    # Visibility flags (all default True if absent for backward compat):
+    # customer_visible  — shown in the public /get-quote form
+    # internal_visible  — shown in the internal Manufacture Designer / quote panel
+    # pdf_visible       — included in the client quote PDF spec block
+    # portal_visible    — shown in the client portal spec summary
     "fields": [
 
         # ── Step 1: Contact ──────────────────────────────────────────────
         {
-            "key": "first_name",
-            "label": "First name",
-            "customer_label": "First name",
-            "type": "text",
-            "step": "contact",
-            "required": True,
+            "key": "first_name", "label": "First name", "customer_label": "First name",
+            "type": "text", "step": "contact", "required": True,
+            "customer_visible": True, "internal_visible": False,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
-            "key": "last_name",
-            "label": "Last name",
-            "customer_label": "Last name",
-            "type": "text",
-            "step": "contact",
-            "required": True,
+            "key": "last_name", "label": "Last name", "customer_label": "Last name",
+            "type": "text", "step": "contact", "required": True,
+            "customer_visible": True, "internal_visible": False,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
-            "key": "email",
-            "label": "Email address",
-            "customer_label": "Email address",
-            "type": "email",
-            "step": "contact",
-            "required": True,
+            "key": "email", "label": "Email address", "customer_label": "Email address",
+            "type": "email", "step": "contact", "required": True,
+            "customer_visible": True, "internal_visible": False,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
-            "key": "phone",
-            "label": "Phone",
-            "customer_label": "Phone",
-            "type": "tel",
-            "step": "contact",
-            "required": False,
+            "key": "phone", "label": "Phone", "customer_label": "Phone",
+            "type": "tel", "step": "contact", "required": False,
+            "customer_visible": True, "internal_visible": False,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
-            "key": "company_name",
-            "label": "Company name",
-            "customer_label": "Company name",
-            "type": "text",
-            "step": "contact",
-            "required": False,
+            "key": "company_name", "label": "Company name", "customer_label": "Company name",
+            "type": "text", "step": "contact", "required": False,
+            "customer_visible": True, "internal_visible": False,
+            "pdf_visible": False, "portal_visible": False,
         },
 
         # ── Step 2: Product ───────────────────────────────────────────────
@@ -125,6 +121,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "product_type",
             "bom_variable": "pod_type",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "quantity",
@@ -137,6 +135,8 @@ OFFICE_POD: dict = {
             "validation": {"min": 1, "max": 100},
             "pricing_variable": "quantity",
             "bom_variable": "quantity",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
 
         # ── Step 3: Dimensions ────────────────────────────────────────────
@@ -151,6 +151,8 @@ OFFICE_POD: dict = {
             "validation": {"min": 1.0, "max": 10.0, "step": 0.1},
             "pricing_variable": "width_m",
             "bom_variable": "width",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "length_m",
@@ -163,6 +165,8 @@ OFFICE_POD: dict = {
             "validation": {"min": 1.0, "max": 15.0, "step": 0.1},
             "pricing_variable": "length_m",
             "bom_variable": "length",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "height_m",
@@ -175,6 +179,43 @@ OFFICE_POD: dict = {
             "validation": {"min": 2.0, "max": 4.5, "step": 0.1},
             "pricing_variable": "height_m",
             "bom_variable": "height",
+            # The Manufacture Designer state key is wall_height_m (eaves height).
+            # For customer-facing purposes these are treated as equivalent.
+            "internal_designer_key": "wall_height_m",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
+        },
+        # Internal-only: roof geometry used by the Manufacture Designer and drawing engine.
+        {
+            "key": "roof_type",
+            "label": "Roof type",
+            "customer_label": "Roof type",
+            "type": "select_tag",
+            "step": "dimensions",
+            "required": False,
+            "default": "duo_pitch",
+            "options": [
+                {"value": "flat",       "label": "Flat"},
+                {"value": "mono_pitch", "label": "Mono Pitch"},
+                {"value": "duo_pitch",  "label": "Duo Pitch"},
+            ],
+            "bom_variable": "roof_type",
+            "customer_visible": False, "internal_visible": True,
+            "pdf_visible": False, "portal_visible": False,
+        },
+        {
+            "key": "roof_pitch_deg",
+            "label": "Roof pitch (°)",
+            "customer_label": "Roof pitch (°)",
+            "type": "number",
+            "step": "dimensions",
+            "required": False,
+            "default": 15,
+            "placeholder": "e.g. 15",
+            "validation": {"min": 0, "max": 89, "step": 1},
+            "bom_variable": "roof_pitch_deg",
+            "customer_visible": False, "internal_visible": True,
+            "pdf_visible": False, "portal_visible": False,
         },
 
         # ── Step 4: Openings ──────────────────────────────────────────────
@@ -188,6 +229,8 @@ OFFICE_POD: dict = {
             "default": 1,
             "validation": {"min": 0, "max": 10},
             "bom_variable": "door_count",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "door_type",
@@ -203,6 +246,8 @@ OFFICE_POD: dict = {
                 {"value": "bi_fold",  "label": "Bi-fold Door"},
             ],
             "bom_variable": "door_type",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "window_count",
@@ -214,6 +259,8 @@ OFFICE_POD: dict = {
             "default": 2,
             "validation": {"min": 0, "max": 20},
             "bom_variable": "window_count",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "window_type",
@@ -228,6 +275,8 @@ OFFICE_POD: dict = {
                 {"value": "tilt_turn", "label": "Tilt & Turn"},
             ],
             "bom_variable": "window_type",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "rooflight_count",
@@ -239,6 +288,8 @@ OFFICE_POD: dict = {
             "default": 0,
             "validation": {"min": 0, "max": 10},
             "bom_variable": "rooflight_count",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
 
         # ── Step 5: Finishes ──────────────────────────────────────────────
@@ -263,6 +314,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "external_finish",
             "bom_variable": "external_finish",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "internal_finish_package",
@@ -281,6 +334,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "internal_finish",
             "bom_variable": "internal_finish_package",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
 
         # ── Step 6: Services ──────────────────────────────────────────────
@@ -299,6 +354,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "heating_option",
             "bom_variable": "heating_option",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "ventilation_option",
@@ -314,6 +371,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "ventilation_option",
             "bom_variable": "ventilation_option",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
         {
             "key": "electrical_package",
@@ -329,6 +388,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "electrical_package",
             "bom_variable": "electrical_package",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
 
         # ── Step 7: Foundation ────────────────────────────────────────────
@@ -351,6 +412,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "foundation_option",
             "bom_variable": "foundation_option",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
 
         # ── Step 8: Delivery ──────────────────────────────────────────────
@@ -371,6 +434,8 @@ OFFICE_POD: dict = {
             ],
             "pricing_variable": "delivery_option",
             "bom_variable": "delivery_install_option",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": True, "portal_visible": True,
         },
 
         # ── Step 9: Review ────────────────────────────────────────────────
@@ -382,6 +447,8 @@ OFFICE_POD: dict = {
             "step": "review",
             "required": False,
             "placeholder": "e.g. Dublin, Ireland",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
             "key": "intended_use",
@@ -398,6 +465,8 @@ OFFICE_POD: dict = {
                 {"value": "office",      "label": "Office / Commercial"},
                 {"value": "other",       "label": "Other"},
             ],
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
             "key": "timeline",
@@ -413,6 +482,8 @@ OFFICE_POD: dict = {
                 {"value": "12months", "label": "Within 12 months"},
             ],
             "pricing_variable": "lead_time_preference",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": False, "portal_visible": False,
         },
         {
             "key": "notes",
@@ -422,6 +493,8 @@ OFFICE_POD: dict = {
             "step": "review",
             "required": False,
             "placeholder": "Access constraints, site conditions, anything else we should know…",
+            "customer_visible": True, "internal_visible": True,
+            "pdf_visible": False, "portal_visible": False,
         },
     ],
 
