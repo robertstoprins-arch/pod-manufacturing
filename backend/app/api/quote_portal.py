@@ -114,17 +114,7 @@ def get_client_quote(token: uuid.UUID, db: Db):
     # Build client-safe spec summary from snapshot
     spec_summary = None
     if quote.spec_snapshot:
-        fields = _spec_fields(quote.spec_snapshot)
-        spec_summary = {
-            "pod_type":     fields.get("pod_type"),
-            "width_m":      fields.get("width_m"),
-            "length_m":     fields.get("length_m"),
-            "height_m":     fields.get("height_m"),
-            "wall_height_m": fields.get("wall_height_m"),
-            "floor_area_m2": fields.get("floor_area_m2"),
-            "roof_type":    fields.get("roof_type"),
-            "openings":     fields.get("openings"),
-        }
+        spec_summary = _build_spec_summary(quote.spec_snapshot)
 
     return ClientQuoteOut(
         quote_id=quote.id,
@@ -198,10 +188,7 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
     # Return updated view
     spec_summary = None
     if quote.spec_snapshot:
-        fields = _spec_fields(quote.spec_snapshot)
-        spec_summary = {k: fields.get(k) for k in
-                        ("pod_type", "width_m", "length_m", "height_m", "wall_height_m",
-                         "floor_area_m2", "roof_type", "openings")}
+        spec_summary = _build_spec_summary(quote.spec_snapshot)
 
     return ClientQuoteOut(
         quote_id=quote.id,
@@ -234,6 +221,40 @@ def _spec_fields(snap: dict | None) -> dict:
     if isinstance(qa, dict):
         return qa
     return snap
+
+
+def _build_spec_summary(snap: dict | None) -> dict | None:
+    """Build a client-safe spec summary from a spec_snapshot (handles both old and new format)."""
+    if not snap:
+        return None
+    f = _spec_fields(snap)
+    return {
+        "pod_type":                f.get("pod_type"),
+        "quantity":                f.get("quantity"),
+        "width_m":                 f.get("width_m"),
+        "length_m":                f.get("length_m"),
+        "height_m":                f.get("height_m"),
+        "wall_height_m":           f.get("wall_height_m"),
+        "floor_area_m2":           f.get("floor_area_m2"),
+        "door_count":              f.get("door_count"),
+        "door_type":               f.get("door_type"),
+        "window_count":            f.get("window_count"),
+        "window_type":             f.get("window_type"),
+        "rooflight_count":         f.get("rooflight_count"),
+        "external_finish":         f.get("external_finish"),
+        "internal_finish_package": f.get("internal_finish_package"),
+        "heating_option":          f.get("heating_option"),
+        "ventilation_option":      f.get("ventilation_option"),
+        "electrical_package":      f.get("electrical_package"),
+        "foundation_option":       f.get("foundation_option"),
+        "delivery_install_option": f.get("delivery_install_option"),
+        "location":                f.get("location"),
+        "intended_use":            f.get("intended_use"),
+        "timeline":                f.get("timeline"),
+        # Legacy / manually-entered fields
+        "roof_type":               f.get("roof_type"),
+        "openings":                f.get("openings"),
+    }
 
 
 def _add_event(db, quote, event_type, old_status, note, created_by):

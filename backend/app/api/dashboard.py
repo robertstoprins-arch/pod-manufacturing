@@ -138,6 +138,33 @@ def get_dashboard_summary(db: Db):  # noqa: C901
         if not q.total_inc_vat or float(q.total_inc_vat) == 0
     )
 
+    # Web enquiries with auto-estimate available but not yet manually priced
+    estimate_available_count = sum(
+        1 for q in active_quotes
+        if q.lead_source == "website"
+        and q.spec_snapshot
+        and (q.spec_snapshot.get("pricing_estimate") or {}).get("status") == "estimated"
+        and (not q.total_inc_vat or float(q.total_inc_vat) == 0)
+    )
+
+    # Draft quotes that have pricing and are ready to send
+    ready_to_send_count = sum(
+        1 for q in active_quotes
+        if q.status == "draft"
+        and q.total_inc_vat
+        and float(q.total_inc_vat) > 0
+    )
+
+    # Web enquiries missing dimensions (can't auto-price)
+    input_incomplete_count = sum(
+        1 for q in active_quotes
+        if q.status == "draft"
+        and q.lead_source == "website"
+        and q.spec_snapshot
+        and not _spec_fields(q.spec_snapshot).get("width_m")
+        and not _spec_fields(q.spec_snapshot).get("length_m")
+    )
+
     awaiting_deposit_count = sum(
         1 for q in quotes
         if q.status == "accepted"
@@ -165,15 +192,15 @@ def get_dashboard_summary(db: Db):  # noqa: C901
     # ── Summary cards ─────────────────────────────────────────────────────────
 
     summary_cards = [
-        {"key": "new_enquiries",        "label": "New enquiries (7d)",       "count": new_enquiries_count,                                    "severity": "info"},
-        {"key": "draft_quotes",         "label": "Draft",                    "count": counts["draft"],                                        "severity": "info"},
+        {"key": "new_enquiries",        "label": "New enquiries (7d)",       "count": new_enquiries_count,                                        "severity": "info"},
+        {"key": "input_incomplete",     "label": "Incomplete input",         "count": input_incomplete_count, "severity": "info" if input_incomplete_count == 0 else "warning"},
+        {"key": "estimate_available",   "label": "Estimates ready",          "count": estimate_available_count,                                   "severity": "info"},
+        {"key": "ready_to_send",        "label": "Ready to send",            "count": ready_to_send_count,    "severity": "info" if ready_to_send_count == 0     else "warning"},
         {"key": "unpriced_quotes",      "label": "Unpriced",                 "count": unpriced_count,         "severity": "warning" if unpriced_count > 0        else "info"},
-        {"key": "sent_quotes",          "label": "Sent",                     "count": counts["sent"],                                         "severity": "info"},
         {"key": "changes_requested",    "label": "Changes requested",        "count": counts["changes_requested"], "severity": "warning" if counts["changes_requested"] > 0 else "info"},
-        {"key": "accepted_quotes",      "label": "Accepted",                 "count": counts["accepted"],                                     "severity": "info"},
+        {"key": "accepted_quotes",      "label": "Accepted",                 "count": counts["accepted"],                                         "severity": "info"},
         {"key": "awaiting_deposit",     "label": "Awaiting deposit",         "count": awaiting_deposit_count, "severity": "warning" if awaiting_deposit_count > 0 else "info"},
-        {"key": "rfq_awaiting_response","label": "RFQs awaiting response",   "count": rfq_awaiting_response,                                  "severity": "info"},
-        {"key": "supplier_awards",      "label": "Supplier awards complete", "count": rfq_awarded,                                            "severity": "info"},
+        {"key": "rfq_awaiting_response","label": "RFQs awaiting response",   "count": rfq_awaiting_response,                                      "severity": "info"},
     ]
 
     # ── Action required ────────────────────────────────────────────────────────
@@ -194,6 +221,51 @@ def get_dashboard_summary(db: Db):  # noqa: C901
                 suffix, q.id, ref, cn, title, message, severity, blocker_code,
                 recommended, action_key, requires_human, can_suggest, can_execute,
             ))
+
+        # QUOTE_INPUT_INCOMPLETE — web enquiry missing dimensions
+        if (q.status == "draft"
+                and q.lead_source == "website"
+                and q.spec_snapshot):
+            f = _spec_fields(q.spec_snapshot)
+            if not f.get("width_m") and not f.get("length_m"):
+                add("input-incomplete",
+                    "Enquiry missing dimensions",
+                    f"{ref}: web enquiry received but no dimensions provided — cannot auto-price.",
+                    "info", "QUOTE_INPUT_INCOMPLETE",
+                    "Contact client to confirm dimensions and update the enquiry",
+                    "open_quote", can_suggest=True)
+
+        # QUOTE_ESTIMATE_USED — auto-estimate available but no manual pricing yet
+        if (q.lead_source == "website"
+                and q.spec_snapshot
+                and (q.spec_snapshot.get("pricing_estimate") or {}).get("status") == "estimated"
+                and (not q.total_inc_vat or float(q.total_inc_vat) == 0)):
+            pe = q.spec_snapshot["pricing_estimate"]
+            est_total = pe.get("total_inc_vat", 0)
+            add("estimate-available",
+                "Auto-estimate ready — review and confirm pricing",
+                f"{ref}: indicative estimate €{est_total:,.0f} inc VAT generated from enquiry answers.",
+                "info", "QUOTE_ESTIMATE_USED",
+                f"Review estimate (€{est_total:,.0f} inc VAT) and confirm or revise pricing",
+                "open_quote", can_suggest=True)
+
+        # QUOTE_READY_TO_SEND — priced but still in draft
+        if q.status == "draft" and q.total_inc_vat and float(q.total_inc_vat) > 0:
+            add("ready-to-send",
+                "Quote ready to send to client",
+                f"{ref}: priced at {q.currency} {float(q.total_inc_vat):,.0f} but still in draft.",
+                "info", "QUOTE_READY_TO_SEND",
+                "Review and send quote to client",
+                "open_quote", can_suggest=True)
+
+        # QUOTE_DOCUMENTS_NOT_GENERATED — sent but no client portal link
+        if q.status in ("sent", "follow_up_due") and not getattr(q, "client_token", None):
+            add("no-client-link",
+                "No client portal link",
+                f"{ref}: marked as sent but client portal link not generated.",
+                "info", "QUOTE_DOCUMENTS_NOT_GENERATED",
+                "Generate client quote portal link so client can view and respond",
+                "open_quote", can_execute=True)
 
         # QUOTE_PRICE_MISSING
         if q.status in ("draft", "sent", "follow_up_due") and (not q.total_inc_vat or float(q.total_inc_vat) == 0):
@@ -383,15 +455,21 @@ def get_dashboard_summary(db: Db):  # noqa: C901
 
     next_actions = []
     if counts["changes_requested"] > 0:
-        next_actions.append({"priority": 1, "action": "Review client-requested changes",          "count": counts["changes_requested"],            "blocker_code": "CLIENT_CHANGES_REQUESTED"})
-    if unpriced_count > 0:
-        next_actions.append({"priority": 2, "action": "Complete pricing for unpriced quotes",     "count": unpriced_count,                         "blocker_code": "QUOTE_PRICE_MISSING"})
+        next_actions.append({"priority": 1, "action": "Review client-requested changes",          "count": counts["changes_requested"],             "blocker_code": "CLIENT_CHANGES_REQUESTED"})
     if awaiting_deposit_count > 0:
-        next_actions.append({"priority": 3, "action": "Follow up deposit payments",               "count": awaiting_deposit_count,                 "blocker_code": "DEPOSIT_NOT_PAID"})
+        next_actions.append({"priority": 2, "action": "Follow up deposit payments",               "count": awaiting_deposit_count,                  "blocker_code": "DEPOSIT_NOT_PAID"})
+    if ready_to_send_count > 0:
+        next_actions.append({"priority": 3, "action": "Send priced quotes to clients",            "count": ready_to_send_count,                     "blocker_code": "QUOTE_READY_TO_SEND"})
+    if estimate_available_count > 0:
+        next_actions.append({"priority": 4, "action": "Review and confirm auto-estimates",        "count": estimate_available_count,                "blocker_code": "QUOTE_ESTIMATE_USED"})
+    if input_incomplete_count > 0:
+        next_actions.append({"priority": 5, "action": "Follow up incomplete enquiries (no dims)", "count": input_incomplete_count,                  "blocker_code": "QUOTE_INPUT_INCOMPLETE"})
+    if unpriced_count > 0:
+        next_actions.append({"priority": 6, "action": "Complete pricing for unpriced quotes",     "count": unpriced_count,                          "blocker_code": "QUOTE_PRICE_MISSING"})
     if bom_rfq_health["supplier_award_missing"] > 0:
-        next_actions.append({"priority": 4, "action": "Compare supplier responses and award",     "count": bom_rfq_health["supplier_award_missing"],"blocker_code": "SUPPLIER_AWARD_MISSING"})
+        next_actions.append({"priority": 7, "action": "Compare supplier responses and award",     "count": bom_rfq_health["supplier_award_missing"], "blocker_code": "SUPPLIER_AWARD_MISSING"})
     if bom_rfq_health["rfq_not_sent"] > 0:
-        next_actions.append({"priority": 5, "action": "Send pending RFQs to suppliers",           "count": bom_rfq_health["rfq_not_sent"],          "blocker_code": "RFQ_NOT_SENT"})
+        next_actions.append({"priority": 8, "action": "Send pending RFQs to suppliers",           "count": bom_rfq_health["rfq_not_sent"],           "blocker_code": "RFQ_NOT_SENT"})
 
     # ── Agent-readable state ───────────────────────────────────────────────────
 
@@ -410,21 +488,27 @@ def get_dashboard_summary(db: Db):  # noqa: C901
     else:                                   system_status = "needs_attention"
 
     if counts["changes_requested"] > 0:         recommended_focus = "client_changes"
-    elif unpriced_count > 0:                    recommended_focus = "pricing_and_quotes"
     elif awaiting_deposit_count > 0:            recommended_focus = "deposit_and_payments"
+    elif ready_to_send_count > 0:               recommended_focus = "send_quotes"
+    elif estimate_available_count > 0:          recommended_focus = "confirm_estimates"
+    elif input_incomplete_count > 0:            recommended_focus = "follow_up_enquiries"
+    elif unpriced_count > 0:                    recommended_focus = "pricing_and_quotes"
     elif bom_rfq_health["supplier_award_missing"] > 0: recommended_focus = "supplier_awards"
     elif bom_rfq_health["rfq_not_sent"] > 0:   recommended_focus = "rfq_management"
     else:                                       recommended_focus = "none"
 
     agent_readable_state = {
-        "generated_at":       now.isoformat(),
-        "system_status":      system_status,
-        "highest_severity":   highest_severity,
-        "open_action_count":  open_action_count,
-        "blocked_count":      blocked_count,
-        "recommended_focus":  recommended_focus,
-        "quote_counts":       counts,
-        "active_quote_count": len(active_quotes),
+        "generated_at":            now.isoformat(),
+        "system_status":           system_status,
+        "highest_severity":        highest_severity,
+        "open_action_count":       open_action_count,
+        "blocked_count":           blocked_count,
+        "recommended_focus":       recommended_focus,
+        "quote_counts":            counts,
+        "active_quote_count":      len(active_quotes),
+        "input_incomplete_count":  input_incomplete_count,
+        "estimate_available_count": estimate_available_count,
+        "ready_to_send_count":     ready_to_send_count,
     }
 
     return {

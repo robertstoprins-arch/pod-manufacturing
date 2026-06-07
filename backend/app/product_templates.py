@@ -8,6 +8,7 @@ Each template defines:
   - The steps shown in the quote form
   - Every customer-facing field (type, options, validation, labels)
   - Internal variable mappings to the pricing engine and BOM
+  - Indicative pricing estimates for early-stage ballparks
 
 Adding a new manufacturer product template:
   1. Define a new dict in this file following the OFFICE_POD structure.
@@ -32,15 +33,21 @@ OFFICE_POD: dict = {
     "id": "office_pod",
     "name": "Office Pod / Garden Pod",
     "description": "Insulated acoustic workspace, meeting pod, or garden room.",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "status": "active",   # active | draft | archived
 
     # Steps shown in the multi-step form.
     # The 'nav_label' is the short text shown in the progress bar.
     "steps": [
-        {"id": "contact", "title": "Your Contact Details",  "nav_label": "Contact"},
-        {"id": "product", "title": "Pod Configuration",     "nav_label": "Pod Type"},
-        {"id": "project", "title": "Project Details",       "nav_label": "Project"},
+        {"id": "contact",    "title": "Your Contact Details",          "nav_label": "Contact"},
+        {"id": "product",    "title": "Pod Type",                      "nav_label": "Pod Type"},
+        {"id": "dimensions", "title": "Dimensions",                    "nav_label": "Dimensions"},
+        {"id": "openings",   "title": "Doors, Windows & Rooflights",   "nav_label": "Openings"},
+        {"id": "finishes",   "title": "Finishes",                      "nav_label": "Finishes"},
+        {"id": "services",   "title": "Heating, Ventilation & Electrical", "nav_label": "Services"},
+        {"id": "foundation", "title": "Foundation & Base",             "nav_label": "Foundation"},
+        {"id": "delivery",   "title": "Delivery & Installation",       "nav_label": "Delivery"},
+        {"id": "review",     "title": "Review & Submit",               "nav_label": "Review"},
     ],
 
     # All fields in order.
@@ -122,7 +129,7 @@ OFFICE_POD: dict = {
         {
             "key": "quantity",
             "label": "Quantity",
-            "customer_label": "Quantity",
+            "customer_label": "How many pods do you need?",
             "type": "number",
             "step": "product",
             "required": True,
@@ -131,25 +138,14 @@ OFFICE_POD: dict = {
             "pricing_variable": "quantity",
             "bom_variable": "quantity",
         },
-        {
-            "key": "size_option",
-            "label": "Approximate size",
-            "customer_label": "Approximate size (optional)",
-            "type": "select_tag",
-            "step": "product",
-            "required": False,
-            "options": [
-                {"value": "small",  "label": "Small",  "description": "Under 6m²"},
-                {"value": "medium", "label": "Medium", "description": "6–12m²"},
-                {"value": "large",  "label": "Large",  "description": "Over 12m²"},
-            ],
-        },
+
+        # ── Step 3: Dimensions ────────────────────────────────────────────
         {
             "key": "width_m",
             "label": "Width (m)",
             "customer_label": "Width (m)",
             "type": "number",
-            "step": "product",
+            "step": "dimensions",
             "required": False,
             "placeholder": "e.g. 3.5",
             "validation": {"min": 1.0, "max": 10.0, "step": 0.1},
@@ -161,21 +157,229 @@ OFFICE_POD: dict = {
             "label": "Length (m)",
             "customer_label": "Length (m)",
             "type": "number",
-            "step": "product",
+            "step": "dimensions",
             "required": False,
             "placeholder": "e.g. 5.0",
             "validation": {"min": 1.0, "max": 15.0, "step": 0.1},
             "pricing_variable": "length_m",
             "bom_variable": "length",
         },
+        {
+            "key": "height_m",
+            "label": "Height (m)",
+            "customer_label": "Internal height (m)",
+            "type": "number",
+            "step": "dimensions",
+            "required": False,
+            "placeholder": "e.g. 2.5",
+            "validation": {"min": 2.0, "max": 4.5, "step": 0.1},
+            "pricing_variable": "height_m",
+            "bom_variable": "height",
+        },
 
-        # ── Step 3: Project ───────────────────────────────────────────────
+        # ── Step 4: Openings ──────────────────────────────────────────────
+        {
+            "key": "door_count",
+            "label": "Number of doors",
+            "customer_label": "How many external doors?",
+            "type": "number",
+            "step": "openings",
+            "required": False,
+            "default": 1,
+            "validation": {"min": 0, "max": 10},
+            "bom_variable": "door_count",
+        },
+        {
+            "key": "door_type",
+            "label": "Door type",
+            "customer_label": "Door style",
+            "type": "select_tag",
+            "step": "openings",
+            "required": False,
+            "options": [
+                {"value": "single",   "label": "Single Door"},
+                {"value": "double",   "label": "Double / French Doors"},
+                {"value": "sliding",  "label": "Sliding Door"},
+                {"value": "bi_fold",  "label": "Bi-fold Door"},
+            ],
+            "bom_variable": "door_type",
+        },
+        {
+            "key": "window_count",
+            "label": "Number of windows",
+            "customer_label": "How many windows?",
+            "type": "number",
+            "step": "openings",
+            "required": False,
+            "default": 2,
+            "validation": {"min": 0, "max": 20},
+            "bom_variable": "window_count",
+        },
+        {
+            "key": "window_type",
+            "label": "Window type",
+            "customer_label": "Window style",
+            "type": "select_tag",
+            "step": "openings",
+            "required": False,
+            "options": [
+                {"value": "fixed",     "label": "Fixed"},
+                {"value": "casement",  "label": "Casement / Opening"},
+                {"value": "tilt_turn", "label": "Tilt & Turn"},
+            ],
+            "bom_variable": "window_type",
+        },
+        {
+            "key": "rooflight_count",
+            "label": "Number of rooflights",
+            "customer_label": "Rooflights / skylights",
+            "type": "number",
+            "step": "openings",
+            "required": False,
+            "default": 0,
+            "validation": {"min": 0, "max": 10},
+            "bom_variable": "rooflight_count",
+        },
+
+        # ── Step 5: Finishes ──────────────────────────────────────────────
+        {
+            "key": "external_finish",
+            "label": "External finish",
+            "customer_label": "External cladding / finish",
+            "type": "select_card",
+            "step": "finishes",
+            "required": False,
+            "options": [
+                {"value": "timber_clad",      "label": "Timber Cladding",
+                 "description": "Natural or treated timber boards"},
+                {"value": "composite",        "label": "Composite Panel",
+                 "description": "Low-maintenance fibre cement or composite"},
+                {"value": "brick_slip",       "label": "Brick Slip",
+                 "description": "Traditional brick-effect facing"},
+                {"value": "render",           "label": "Render",
+                 "description": "Smooth or textured silicone render"},
+                {"value": "corrugated_metal", "label": "Corrugated Metal",
+                 "description": "Galvanised or powder-coated steel sheet"},
+            ],
+            "pricing_variable": "external_finish",
+            "bom_variable": "external_finish",
+        },
+        {
+            "key": "internal_finish_package",
+            "label": "Internal finish",
+            "customer_label": "Internal finish package",
+            "type": "select_card",
+            "step": "finishes",
+            "required": False,
+            "options": [
+                {"value": "basic",    "label": "Basic",
+                 "description": "Painted MDF lining panels"},
+                {"value": "standard", "label": "Standard",
+                 "description": "Plasterboard + emulsion paint"},
+                {"value": "premium",  "label": "Premium",
+                 "description": "Plasterboard, coving, and feature wall finishes"},
+            ],
+            "pricing_variable": "internal_finish",
+            "bom_variable": "internal_finish_package",
+        },
+
+        # ── Step 6: Services ──────────────────────────────────────────────
+        {
+            "key": "heating_option",
+            "label": "Heating",
+            "customer_label": "Heating",
+            "type": "select_tag",
+            "step": "services",
+            "required": False,
+            "options": [
+                {"value": "none",           "label": "No heating"},
+                {"value": "electric_panel", "label": "Electric Panel Heaters"},
+                {"value": "underfloor",     "label": "Underfloor Heating"},
+                {"value": "air_source",     "label": "Air Source Heat Pump"},
+            ],
+            "pricing_variable": "heating_option",
+            "bom_variable": "heating_option",
+        },
+        {
+            "key": "ventilation_option",
+            "label": "Ventilation",
+            "customer_label": "Ventilation",
+            "type": "select_tag",
+            "step": "services",
+            "required": False,
+            "options": [
+                {"value": "natural", "label": "Natural Ventilation"},
+                {"value": "mvhr",    "label": "MVHR Unit"},
+                {"value": "louvres", "label": "Louvre Panels"},
+            ],
+            "pricing_variable": "ventilation_option",
+            "bom_variable": "ventilation_option",
+        },
+        {
+            "key": "electrical_package",
+            "label": "Electrical package",
+            "customer_label": "Electrical package",
+            "type": "select_tag",
+            "step": "services",
+            "required": False,
+            "options": [
+                {"value": "basic",    "label": "Basic (sockets + lighting)"},
+                {"value": "standard", "label": "Standard (sockets, lighting, data)"},
+                {"value": "full",     "label": "Full (sockets, lighting, data, consumer unit)"},
+            ],
+            "pricing_variable": "electrical_package",
+            "bom_variable": "electrical_package",
+        },
+
+        # ── Step 7: Foundation ────────────────────────────────────────────
+        {
+            "key": "foundation_option",
+            "label": "Foundation type",
+            "customer_label": "Foundation / base type",
+            "type": "select_card",
+            "step": "foundation",
+            "required": False,
+            "options": [
+                {"value": "groundworks",    "label": "Concrete Pad",
+                 "description": "Traditional groundworks and concrete slab"},
+                {"value": "screw_pile",     "label": "Screw Pile",
+                 "description": "Minimal excavation, suitable for most ground conditions"},
+                {"value": "pad_stone",      "label": "Pad Stone / Timber Frame",
+                 "description": "Raised timber frame on pad stones"},
+                {"value": "existing_slab",  "label": "Existing Slab",
+                 "description": "Pod placed on an existing concrete slab"},
+            ],
+            "pricing_variable": "foundation_option",
+            "bom_variable": "foundation_option",
+        },
+
+        # ── Step 8: Delivery ──────────────────────────────────────────────
+        {
+            "key": "delivery_install_option",
+            "label": "Delivery & installation",
+            "customer_label": "Delivery & installation",
+            "type": "select_card",
+            "step": "delivery",
+            "required": False,
+            "options": [
+                {"value": "supply_only",    "label": "Supply Only",
+                 "description": "Pod delivered flat-pack or modular; customer installs"},
+                {"value": "supply_install", "label": "Supply & Install",
+                 "description": "We deliver and install the pod on your prepared base"},
+                {"value": "turnkey",        "label": "Turnkey",
+                 "description": "Full package: supply, install, groundworks, and connections"},
+            ],
+            "pricing_variable": "delivery_option",
+            "bom_variable": "delivery_install_option",
+        },
+
+        # ── Step 9: Review ────────────────────────────────────────────────
         {
             "key": "location",
             "label": "Location",
             "customer_label": "Project location (City / Country)",
             "type": "text",
-            "step": "project",
+            "step": "review",
             "required": False,
             "placeholder": "e.g. Dublin, Ireland",
         },
@@ -184,7 +388,7 @@ OFFICE_POD: dict = {
             "label": "Intended use",
             "customer_label": "Intended use",
             "type": "select_tag",
-            "step": "project",
+            "step": "review",
             "required": False,
             "options": [
                 {"value": "hotel",       "label": "Hotel / Hospitality"},
@@ -200,7 +404,7 @@ OFFICE_POD: dict = {
             "label": "Timeline",
             "customer_label": "When do you need it?",
             "type": "select_tag",
-            "step": "project",
+            "step": "review",
             "required": False,
             "options": [
                 {"value": "asap",     "label": "As soon as possible"},
@@ -215,9 +419,9 @@ OFFICE_POD: dict = {
             "label": "Notes",
             "customer_label": "Notes or special requirements (optional)",
             "type": "textarea",
-            "step": "project",
+            "step": "review",
             "required": False,
-            "placeholder": "Finishes, access constraints, site conditions, anything else we should know…",
+            "placeholder": "Access constraints, site conditions, anything else we should know…",
         },
     ],
 
@@ -230,18 +434,52 @@ OFFICE_POD: dict = {
         "notes": "Dimensions outside these ranges require a custom engineering assessment.",
     },
 
+    # Indicative pricing rates used to compute a ballpark estimate from
+    # questionnaire answers. Displayed to the customer as an estimate only.
+    # All figures are EUR ex-VAT unless noted.
+    "pricing_estimates": {
+        "base_rate_per_m2_ex_vat": 1200,
+        "vat_rate": 0.23,
+        "addons": {
+            "timber_clad":          {"per_m2": 150, "flat": 0},
+            "composite":            {"per_m2": 0,   "flat": 0},
+            "brick_slip":           {"per_m2": 200, "flat": 0},
+            "render":               {"per_m2": 0,   "flat": 0},
+            "corrugated_metal":     {"per_m2": -50, "flat": 0},
+            "height_premium":       {"threshold_m": 3.0, "flat": 500},
+            "underfloor_heating":   {"per_m2": 80,  "flat": 0},
+            "air_source_heat_pump": {"per_m2": 0,   "flat": 3000},
+            "mvhr":                 {"per_m2": 0,   "flat": 1500},
+            "full_electrical":      {"per_m2": 0,   "flat": 500},
+            "supply_install":       {"per_m2": 0,   "flat": 2000},
+            "turnkey":              {"per_m2": 0,   "flat": 5000},
+            "screw_pile":           {"per_m2": 0,   "flat": 2500},
+        },
+        "disclaimer": (
+            "This is an indicative estimate only. "
+            "Final pricing depends on detailed specification review, "
+            "site conditions, and material lead times."
+        ),
+    },
+
     # Explains how questionnaire answers feed into the pricing and BOM engines.
-    # This is documentation for the onboarding agent and developers.
     "pricing_variable_notes": {
         "product_type":  "Selects the assembly set (wall/roof/floor build-ups) in the BOM engine.",
         "quantity":      "Multiplies all BOM line quantities and cost totals.",
         "width_m":       "Used to calculate wall and floor area (sqm) for material take-off.",
         "length_m":      "Used to calculate wall and floor area (sqm) for material take-off.",
-        "lead_time_preference": "Informational only at quote stage. May affect delivery pricing later.",
+        "height_m":      "Used to calculate wall area height and volume. Premium applies above 3.0m.",
+        "external_finish": "Selects cladding build-up and adjusts sqm rate.",
+        "internal_finish": "Selects internal lining assembly.",
+        "heating_option":  "Adds heating system to MEP BOM.",
+        "ventilation_option": "Adds ventilation assembly to MEP BOM.",
+        "electrical_package": "Sets electrical containment and fitting allowances.",
+        "foundation_option":  "Adds relevant groundworks BOM line.",
+        "delivery_option":    "Adds delivery and installation cost line.",
+        "lead_time_preference": "Informational only at quote stage.",
     },
 
-    # Variables the future onboarding agent should try to extract and populate
-    # from manufacturer-provided documents.
+    # Variables the future onboarding agent should try to extract.
     "onboarding_extraction_targets": [
         "pod_type options and descriptions",
         "size constraints (min/max dimensions)",
@@ -263,12 +501,6 @@ OFFICE_POD: dict = {
 
 TEMPLATES: dict[str, dict] = {
     "office_pod": OFFICE_POD,
-    # Add future templates here by key.
-    # Example:
-    #   "bathroom_pod": BATHROOM_POD,
-    #   "wall_panelling": WALL_PANELLING,
-    # Each is activated by setting status = "active".
-    # Draft templates are excluded from the public listing.
 }
 
 

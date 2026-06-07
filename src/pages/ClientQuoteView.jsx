@@ -112,22 +112,42 @@ export default function ClientQuoteView() {
           <div style={s.section}>
             <div style={s.sectionTitle}>Pod Specification</div>
             <div style={s.specGrid}>
-              {quote.spec_summary.pod_type && <SpecItem label="Type" value={quote.spec_summary.pod_type} />}
-              {quote.spec_summary.width_m && <SpecItem label="Width" value={`${quote.spec_summary.width_m} m`} />}
-              {quote.spec_summary.length_m && <SpecItem label="Length" value={`${quote.spec_summary.length_m} m`} />}
-              {quote.spec_summary.height_m && <SpecItem label="Height" value={`${quote.spec_summary.height_m} m`} />}
-              {quote.spec_summary.wall_height_m && <SpecItem label="Wall Height" value={`${quote.spec_summary.wall_height_m} m`} />}
-              {quote.spec_summary.floor_area_m2 && <SpecItem label="Floor Area" value={`${quote.spec_summary.floor_area_m2} m²`} />}
-              {quote.spec_summary.roof_type && <SpecItem label="Roof Type" value={quote.spec_summary.roof_type} />}
+              {quote.spec_summary.pod_type               && <SpecItem label="Type"        value={quote.spec_summary.pod_type} />}
+              {quote.spec_summary.quantity > 1           && <SpecItem label="Quantity"    value={quote.spec_summary.quantity} />}
+              {quote.spec_summary.width_m                && <SpecItem label="Width"       value={`${quote.spec_summary.width_m} m`} />}
+              {quote.spec_summary.length_m               && <SpecItem label="Length"      value={`${quote.spec_summary.length_m} m`} />}
+              {quote.spec_summary.height_m               && <SpecItem label="Height"      value={`${quote.spec_summary.height_m} m`} />}
+              {quote.spec_summary.wall_height_m          && <SpecItem label="Wall Height" value={`${quote.spec_summary.wall_height_m} m`} />}
+              {quote.spec_summary.floor_area_m2          && <SpecItem label="Floor Area"  value={`${quote.spec_summary.floor_area_m2} m²`} />}
+              {quote.spec_summary.external_finish        && <SpecItem label="External"    value={quote.spec_summary.external_finish} />}
+              {quote.spec_summary.internal_finish_package && <SpecItem label="Internal"   value={quote.spec_summary.internal_finish_package} />}
+              {quote.spec_summary.heating_option         && <SpecItem label="Heating"     value={quote.spec_summary.heating_option} />}
+              {quote.spec_summary.ventilation_option     && <SpecItem label="Ventilation" value={quote.spec_summary.ventilation_option} />}
+              {quote.spec_summary.electrical_package     && <SpecItem label="Electrical"  value={quote.spec_summary.electrical_package} />}
+              {quote.spec_summary.foundation_option      && <SpecItem label="Foundation"  value={quote.spec_summary.foundation_option} />}
+              {quote.spec_summary.delivery_install_option && <SpecItem label="Delivery"   value={quote.spec_summary.delivery_install_option} />}
+              {quote.spec_summary.roof_type              && <SpecItem label="Roof Type"   value={quote.spec_summary.roof_type} />}
             </div>
-            {quote.spec_summary.openings?.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 6 }}>Openings</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {quote.spec_summary.openings.map((o, i) => (
-                    <span key={i} style={s.tag}>{o.type || 'Opening'} {o.width_m}×{o.height_m}m</span>
-                  ))}
-                </div>
+            {(quote.spec_summary.door_count != null || quote.spec_summary.window_count != null || quote.spec_summary.rooflight_count > 0 || quote.spec_summary.openings?.length > 0) && (
+              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {quote.spec_summary.door_count != null && (
+                  <span style={s.tag}>
+                    {quote.spec_summary.door_count} door{quote.spec_summary.door_count !== 1 ? 's' : ''}
+                    {quote.spec_summary.door_type ? ` (${quote.spec_summary.door_type})` : ''}
+                  </span>
+                )}
+                {quote.spec_summary.window_count != null && (
+                  <span style={s.tag}>
+                    {quote.spec_summary.window_count} window{quote.spec_summary.window_count !== 1 ? 's' : ''}
+                    {quote.spec_summary.window_type ? ` (${quote.spec_summary.window_type})` : ''}
+                  </span>
+                )}
+                {quote.spec_summary.rooflight_count > 0 && (
+                  <span style={s.tag}>{quote.spec_summary.rooflight_count} rooflight{quote.spec_summary.rooflight_count !== 1 ? 's' : ''}</span>
+                )}
+                {quote.spec_summary.openings?.map?.((o, i) => (
+                  <span key={i} style={s.tag}>{o.type || 'Opening'} {o.width_m}×{o.height_m}m</span>
+                ))}
               </div>
             )}
           </div>

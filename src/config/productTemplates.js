@@ -10,29 +10,29 @@
  *   2. Add it to PRODUCT_TEMPLATES.
  *   3. Add the matching definition to backend/app/product_templates.py.
  *   4. Set status: 'active' on both sides before publishing.
- *
- * Future agentic onboarding:
- *   The onboarding agent produces a draft template via the backend API.
- *   After human approval, the frontend copy is generated from the approved
- *   backend schema and committed here. The form renders it automatically.
- *   See docs/agent/agentic_onboarding_architecture.md.
  */
 
 // ---------------------------------------------------------------------------
-// Office Pod / Garden Pod — first active template
+// Office Pod / Garden Pod
 // ---------------------------------------------------------------------------
 
 export const OFFICE_POD = {
   id: 'office_pod',
   name: 'Office Pod / Garden Pod',
   description: 'Insulated acoustic workspace, meeting pod, or garden room.',
-  version: '1.0.0',
+  version: '2.0.0',
   status: 'active',
 
   steps: [
-    { id: 'contact', title: 'Your Contact Details', nav_label: 'Contact'  },
-    { id: 'product', title: 'Pod Configuration',    nav_label: 'Pod Type' },
-    { id: 'project', title: 'Project Details',      nav_label: 'Project'  },
+    { id: 'contact',    title: 'Your Contact Details',          nav_label: 'Contact'    },
+    { id: 'product',    title: 'Pod Type',                      nav_label: 'Pod Type'   },
+    { id: 'dimensions', title: 'Dimensions',                    nav_label: 'Dimensions' },
+    { id: 'openings',   title: 'Doors, Windows & Rooflights',   nav_label: 'Openings'   },
+    { id: 'finishes',   title: 'Finishes',                      nav_label: 'Finishes'   },
+    { id: 'services',   title: 'Heating, Ventilation & Electrical', nav_label: 'Services' },
+    { id: 'foundation', title: 'Foundation & Base',             nav_label: 'Foundation' },
+    { id: 'delivery',   title: 'Delivery & Installation',       nav_label: 'Delivery'   },
+    { id: 'review',     title: 'Review & Submit',               nav_label: 'Review'     },
   ],
 
   fields: [
@@ -62,7 +62,7 @@ export const OFFICE_POD = {
     {
       key: 'quantity',
       label: 'Quantity',
-      customer_label: 'Quantity',
+      customer_label: 'How many pods do you need?',
       type: 'number',
       step: 'product',
       required: true,
@@ -71,25 +71,14 @@ export const OFFICE_POD = {
       pricing_variable: 'quantity',
       bom_variable: 'quantity',
     },
-    {
-      key: 'size_option',
-      label: 'Approximate size',
-      customer_label: 'Approximate size (optional)',
-      type: 'select_tag',
-      step: 'product',
-      required: false,
-      options: [
-        { value: 'small',  label: 'Small',  description: 'Under 6m²' },
-        { value: 'medium', label: 'Medium', description: '6–12m²'    },
-        { value: 'large',  label: 'Large',  description: 'Over 12m²' },
-      ],
-    },
+
+    // ── Dimensions ───────────────────────────────────────────────────────
     {
       key: 'width_m',
       label: 'Width (m)',
       customer_label: 'Width (m)',
       type: 'number',
-      step: 'product',
+      step: 'dimensions',
       required: false,
       placeholder: 'e.g. 3.5',
       validation: { min: 1.0, max: 10.0, step: 0.1 },
@@ -101,21 +90,214 @@ export const OFFICE_POD = {
       label: 'Length (m)',
       customer_label: 'Length (m)',
       type: 'number',
-      step: 'product',
+      step: 'dimensions',
       required: false,
       placeholder: 'e.g. 5.0',
       validation: { min: 1.0, max: 15.0, step: 0.1 },
       pricing_variable: 'length_m',
       bom_variable: 'length',
     },
+    {
+      key: 'height_m',
+      label: 'Internal height (m)',
+      customer_label: 'Internal height (m)',
+      type: 'number',
+      step: 'dimensions',
+      required: false,
+      placeholder: 'e.g. 2.5',
+      validation: { min: 2.0, max: 4.5, step: 0.1 },
+      pricing_variable: 'height_m',
+      bom_variable: 'height',
+    },
 
-    // ── Project ──────────────────────────────────────────────────────────
+    // ── Openings ─────────────────────────────────────────────────────────
+    {
+      key: 'door_count',
+      label: 'Number of doors',
+      customer_label: 'How many external doors?',
+      type: 'number',
+      step: 'openings',
+      required: false,
+      default: 1,
+      validation: { min: 0, max: 10 },
+      bom_variable: 'door_count',
+    },
+    {
+      key: 'door_type',
+      label: 'Door type',
+      customer_label: 'Door style',
+      type: 'select_tag',
+      step: 'openings',
+      required: false,
+      options: [
+        { value: 'single',   label: 'Single Door' },
+        { value: 'double',   label: 'Double / French Doors' },
+        { value: 'sliding',  label: 'Sliding Door' },
+        { value: 'bi_fold',  label: 'Bi-fold Door' },
+      ],
+      bom_variable: 'door_type',
+    },
+    {
+      key: 'window_count',
+      label: 'Number of windows',
+      customer_label: 'How many windows?',
+      type: 'number',
+      step: 'openings',
+      required: false,
+      default: 2,
+      validation: { min: 0, max: 20 },
+      bom_variable: 'window_count',
+    },
+    {
+      key: 'window_type',
+      label: 'Window type',
+      customer_label: 'Window style',
+      type: 'select_tag',
+      step: 'openings',
+      required: false,
+      options: [
+        { value: 'fixed',     label: 'Fixed' },
+        { value: 'casement',  label: 'Casement / Opening' },
+        { value: 'tilt_turn', label: 'Tilt & Turn' },
+      ],
+      bom_variable: 'window_type',
+    },
+    {
+      key: 'rooflight_count',
+      label: 'Rooflights',
+      customer_label: 'Rooflights / skylights',
+      type: 'number',
+      step: 'openings',
+      required: false,
+      default: 0,
+      validation: { min: 0, max: 10 },
+      bom_variable: 'rooflight_count',
+    },
+
+    // ── Finishes ─────────────────────────────────────────────────────────
+    {
+      key: 'external_finish',
+      label: 'External finish',
+      customer_label: 'External cladding / finish',
+      type: 'select_card',
+      step: 'finishes',
+      required: false,
+      options: [
+        { value: 'timber_clad',      label: 'Timber Cladding',    description: 'Natural or treated timber boards' },
+        { value: 'composite',        label: 'Composite Panel',    description: 'Low-maintenance fibre cement or composite' },
+        { value: 'brick_slip',       label: 'Brick Slip',         description: 'Traditional brick-effect facing' },
+        { value: 'render',           label: 'Render',             description: 'Smooth or textured silicone render' },
+        { value: 'corrugated_metal', label: 'Corrugated Metal',   description: 'Galvanised or powder-coated steel sheet' },
+      ],
+      pricing_variable: 'external_finish',
+      bom_variable: 'external_finish',
+    },
+    {
+      key: 'internal_finish_package',
+      label: 'Internal finish',
+      customer_label: 'Internal finish package',
+      type: 'select_card',
+      step: 'finishes',
+      required: false,
+      options: [
+        { value: 'basic',    label: 'Basic',    description: 'Painted MDF lining panels' },
+        { value: 'standard', label: 'Standard', description: 'Plasterboard + emulsion paint' },
+        { value: 'premium',  label: 'Premium',  description: 'Plasterboard, coving, and feature wall finishes' },
+      ],
+      pricing_variable: 'internal_finish',
+      bom_variable: 'internal_finish_package',
+    },
+
+    // ── Services ─────────────────────────────────────────────────────────
+    {
+      key: 'heating_option',
+      label: 'Heating',
+      customer_label: 'Heating',
+      type: 'select_tag',
+      step: 'services',
+      required: false,
+      options: [
+        { value: 'none',           label: 'No heating' },
+        { value: 'electric_panel', label: 'Electric Panel Heaters' },
+        { value: 'underfloor',     label: 'Underfloor Heating' },
+        { value: 'air_source',     label: 'Air Source Heat Pump' },
+      ],
+      pricing_variable: 'heating_option',
+      bom_variable: 'heating_option',
+    },
+    {
+      key: 'ventilation_option',
+      label: 'Ventilation',
+      customer_label: 'Ventilation',
+      type: 'select_tag',
+      step: 'services',
+      required: false,
+      options: [
+        { value: 'natural', label: 'Natural Ventilation' },
+        { value: 'mvhr',    label: 'MVHR Unit' },
+        { value: 'louvres', label: 'Louvre Panels' },
+      ],
+      pricing_variable: 'ventilation_option',
+      bom_variable: 'ventilation_option',
+    },
+    {
+      key: 'electrical_package',
+      label: 'Electrical package',
+      customer_label: 'Electrical package',
+      type: 'select_tag',
+      step: 'services',
+      required: false,
+      options: [
+        { value: 'basic',    label: 'Basic (sockets + lighting)' },
+        { value: 'standard', label: 'Standard (sockets, lighting, data)' },
+        { value: 'full',     label: 'Full (sockets, lighting, data, consumer unit)' },
+      ],
+      pricing_variable: 'electrical_package',
+      bom_variable: 'electrical_package',
+    },
+
+    // ── Foundation ───────────────────────────────────────────────────────
+    {
+      key: 'foundation_option',
+      label: 'Foundation type',
+      customer_label: 'Foundation / base type',
+      type: 'select_card',
+      step: 'foundation',
+      required: false,
+      options: [
+        { value: 'groundworks',   label: 'Concrete Pad',        description: 'Traditional groundworks and concrete slab' },
+        { value: 'screw_pile',    label: 'Screw Pile',          description: 'Minimal excavation, suitable for most ground conditions' },
+        { value: 'pad_stone',     label: 'Pad Stone / Timber Frame', description: 'Raised timber frame on pad stones' },
+        { value: 'existing_slab', label: 'Existing Slab',       description: 'Pod placed on an existing concrete slab' },
+      ],
+      pricing_variable: 'foundation_option',
+      bom_variable: 'foundation_option',
+    },
+
+    // ── Delivery ─────────────────────────────────────────────────────────
+    {
+      key: 'delivery_install_option',
+      label: 'Delivery & installation',
+      customer_label: 'Delivery & installation',
+      type: 'select_card',
+      step: 'delivery',
+      required: false,
+      options: [
+        { value: 'supply_only',    label: 'Supply Only',     description: 'Pod delivered flat-pack or modular; customer installs' },
+        { value: 'supply_install', label: 'Supply & Install', description: 'We deliver and install the pod on your prepared base' },
+        { value: 'turnkey',        label: 'Turnkey',         description: 'Full package: supply, install, groundworks, and connections' },
+      ],
+      pricing_variable: 'delivery_option',
+      bom_variable: 'delivery_install_option',
+    },
+
+    // ── Review ───────────────────────────────────────────────────────────
     {
       key: 'location',
       label: 'Location',
       customer_label: 'Project location (City / Country)',
       type: 'text',
-      step: 'project',
+      step: 'review',
       required: false,
       placeholder: 'e.g. Dublin, Ireland',
     },
@@ -124,7 +306,7 @@ export const OFFICE_POD = {
       label: 'Intended use',
       customer_label: 'Intended use',
       type: 'select_tag',
-      step: 'project',
+      step: 'review',
       required: false,
       options: [
         { value: 'hotel',       label: 'Hotel / Hospitality' },
@@ -140,7 +322,7 @@ export const OFFICE_POD = {
       label: 'Timeline',
       customer_label: 'When do you need it?',
       type: 'select_tag',
-      step: 'project',
+      step: 'review',
       required: false,
       options: [
         { value: 'asap',     label: 'As soon as possible' },
@@ -155,9 +337,9 @@ export const OFFICE_POD = {
       label: 'Notes',
       customer_label: 'Notes or special requirements (optional)',
       type: 'textarea',
-      step: 'project',
+      step: 'review',
       required: false,
-      placeholder: 'Finishes, access constraints, site conditions, anything else we should know…',
+      placeholder: 'Access constraints, site conditions, anything else we should know…',
     },
   ],
 
@@ -176,9 +358,6 @@ export const OFFICE_POD = {
 
 export const PRODUCT_TEMPLATES = {
   office_pod: OFFICE_POD,
-  // Add future templates here:
-  //   bathroom_pod: BATHROOM_POD,
-  //   wall_panelling: WALL_PANELLING,
 }
 
 /** Returns the first active template (used as the default for /get-quote). */

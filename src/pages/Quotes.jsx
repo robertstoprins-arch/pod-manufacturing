@@ -415,33 +415,80 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
           {/* Enquiry Details — shown for quotes created via the web enquiry form */}
           {quote.spec_snapshot?.questionnaire_answers && (() => {
             const qa = quote.spec_snapshot.questionnaire_answers
-            const rows = [
-              { label: 'Pod Type',    value: qa.pod_type },
-              { label: 'Quantity',    value: qa.quantity },
-              { label: 'Size',        value: qa.size_option },
-              { label: 'Width',       value: qa.width_m   != null ? `${qa.width_m} m`   : null },
-              { label: 'Length',      value: qa.length_m  != null ? `${qa.length_m} m`  : null },
-              { label: 'Height',      value: qa.height_m  != null ? `${qa.height_m} m`  : null },
-              { label: 'Location',    value: qa.location },
-              { label: 'Intended Use', value: qa.intended_use },
-              { label: 'Timeline',    value: qa.timeline },
-              { label: 'Foundation',  value: qa.foundation_option },
-              { label: 'Delivery',    value: qa.delivery_option },
-              { label: 'Heating',     value: qa.heating_option },
-              { label: 'Electrical',  value: qa.electrical_package },
-            ].filter(r => r.value != null && r.value !== '')
-            if (!rows.length) return null
+            const pe = quote.spec_snapshot.pricing_estimate
+
+            const row = (label, val) => (val != null && val !== '') ? { label, value: String(val) } : null
+            const m   = (v, unit) => v != null && v !== '' ? `${v} ${unit}` : null
+
+            const groups = [
+              { title: 'Pod', rows: [
+                row('Type',     qa.pod_type),
+                row('Quantity', qa.quantity),
+              ]},
+              { title: 'Dimensions', rows: [
+                row('Width',   m(qa.width_m,  'm')),
+                row('Length',  m(qa.length_m, 'm')),
+                row('Height',  m(qa.height_m, 'm')),
+              ]},
+              { title: 'Openings', rows: [
+                row('Doors',      qa.door_count != null ? `${qa.door_count}${qa.door_type ? ` × ${qa.door_type}` : ''}` : null),
+                row('Windows',    qa.window_count != null ? `${qa.window_count}${qa.window_type ? ` × ${qa.window_type}` : ''}` : null),
+                row('Rooflights', qa.rooflight_count || null),
+              ]},
+              { title: 'Finishes', rows: [
+                row('External', qa.external_finish),
+                row('Internal', qa.internal_finish_package),
+              ]},
+              { title: 'Services', rows: [
+                row('Heating',     qa.heating_option),
+                row('Ventilation', qa.ventilation_option),
+                row('Electrical',  qa.electrical_package),
+              ]},
+              { title: 'Site', rows: [
+                row('Foundation', qa.foundation_option),
+                row('Delivery',   qa.delivery_install_option),
+                row('Location',   qa.location),
+                row('Use',        qa.intended_use),
+                row('Timeline',   qa.timeline),
+              ]},
+            ].map(g => ({ ...g, rows: g.rows.filter(Boolean) })).filter(g => g.rows.length > 0)
+
+            if (!groups.length) return null
             return (
-              <div className="mt-3 border border-blue-100 bg-blue-50 rounded-lg p-3">
-                <div className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide mb-2">Enquiry Details</div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-                  {rows.map(r => (
-                    <InfoRow key={r.label} label={r.label}>{String(r.value)}</InfoRow>
-                  ))}
+              <div className="mt-3 border border-blue-100 bg-blue-50 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-blue-50 border-b border-blue-100">
+                  <div className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide">Enquiry Details</div>
                 </div>
-                {qa.notes && (
-                  <div className="mt-2 text-[11px] text-gray-500 italic whitespace-pre-wrap">{qa.notes}</div>
-                )}
+                <div className="p-3 space-y-3">
+                  {groups.map(g => (
+                    <div key={g.title}>
+                      <div className="text-[10px] font-semibold text-blue-300 uppercase tracking-wide mb-1">{g.title}</div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+                        {g.rows.map(r => (
+                          <InfoRow key={r.label} label={r.label}>{r.value}</InfoRow>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {qa.notes && (
+                    <div className="text-[11px] text-gray-500 italic whitespace-pre-wrap border-t border-blue-100 pt-2 mt-1">{qa.notes}</div>
+                  )}
+                  {pe?.status === 'estimated' && (
+                    <div className="border-t border-blue-100 pt-2 mt-1">
+                      <div className="text-[10px] font-semibold text-blue-300 uppercase tracking-wide mb-1">Indicative Estimate</div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+                        <InfoRow label="Ex VAT">€{Number(pe.total_ex_vat).toLocaleString()}</InfoRow>
+                        <InfoRow label="Inc VAT">€{Number(pe.total_inc_vat).toLocaleString()}</InfoRow>
+                        <InfoRow label="Floor area">{pe.floor_area_m2} m²</InfoRow>
+                        <InfoRow label="Qty">{pe.quantity}</InfoRow>
+                      </div>
+                      {pe.addons_applied?.length > 0 && (
+                        <div className="text-[11px] text-blue-400 mt-1">{pe.addons_applied.join(' · ')}</div>
+                      )}
+                      <div className="text-[10px] text-gray-400 mt-1 italic">{pe.disclaimer}</div>
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })()}
