@@ -9,10 +9,17 @@
  * a compact summary of all previous answers before submission.
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getDefaultTemplate, stepFields } from '../config/productTemplates'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+if (import.meta.env.DEV && !import.meta.env.VITE_API_URL) {
+  console.warn('[GetQuote] VITE_API_URL is not set — using http://localhost:8000')
+}
+
+const DRAFT_KEY = 'get_quote_draft_office_pod'
+const SUBMIT_TIMEOUT_MS = 90_000
 
 async function publicFetch(path, opts = {}) {
   const res = await fetch(`${API}${path}`, {
@@ -20,16 +27,32 @@ async function publicFetch(path, opts = {}) {
     ...opts,
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || res.statusText)
+    const body = await res.json().catch(() => null)
+    const detail = body?.detail || body?.message || res.statusText
+    throw new Error(detail || `Server error (${res.status})`)
   }
   return res.json()
+}
+
+async function fetchWithTimeout(path, opts = {}, timeoutMs = SUBMIT_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await publicFetch(path, { ...opts, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export default function GetQuote() {
   const template = getDefaultTemplate()
 
   const [answers, setAnswers] = useState(() => {
+    // Restore draft from localStorage if available
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      if (saved) return JSON.parse(saved)
+    } catch (_) {}
     const init = {}
     if (template) {
       template.fields.forEach(f => {
@@ -41,8 +64,31 @@ export default function GetQuote() {
 
   const [stepIndex, setStepIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [submitMsg, setSubmitMsg] = useState('')
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+
+  // warm-up banner: null | 'warming' | 'ready' | 'slow'
+  const [warmup, setWarmup] = useState(null)
+  const warmupDone = useRef(false)
+
+  // Save draft to localStorage whenever answers change
+  useEffect(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)) } catch (_) {}
+  }, [answers])
+
+  // Warm up the backend when the page loads
+  useEffect(() => {
+    if (warmupDone.current) return
+    warmupDone.current = true
+
+    const slowTimer = setTimeout(() => setWarmup('warming'), 2000)
+
+    fetch(`${API}/ping`, { method: 'GET' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(() => { clearTimeout(slowTimer); setWarmup('ready') })
+      .catch(() => { clearTimeout(slowTimer); setWarmup('slow') })
+  }, [])
 
   if (!template) {
     return (
@@ -69,41 +115,67 @@ export default function GetQuote() {
     })
 
   async function handleSubmit() {
+    if (submitting) return
     setSubmitting(true)
     setError(null)
-    try {
-      const contactFields = stepFields(template, 'contact').map(f => f.key)
-      const productAnswers = {}
-      Object.entries(answers).forEach(([k, v]) => {
-        if (!contactFields.includes(k)) {
-          const field = template.fields.find(f => f.key === k)
-          if (field?.type === 'number' && v !== '' && v !== null && v !== undefined) {
-            productAnswers[k] = Number(v)
-          } else {
-            productAnswers[k] = (v === '' || v === undefined) ? null : v
-          }
+    setSubmitMsg('Submitting your quote request…')
+
+    const contactFields = stepFields(template, 'contact').map(f => f.key)
+    const productAnswers = {}
+    Object.entries(answers).forEach(([k, v]) => {
+      if (!contactFields.includes(k)) {
+        const field = template.fields.find(f => f.key === k)
+        if (field?.type === 'number' && v !== '' && v !== null && v !== undefined) {
+          productAnswers[k] = Number(v)
+        } else {
+          productAnswers[k] = (v === '' || v === undefined) ? null : v
         }
-      })
-
-      const payload = {
-        first_name:          answers.first_name,
-        last_name:           answers.last_name,
-        email:               answers.email,
-        phone:               answers.phone        || null,
-        company_name:        answers.company_name || null,
-        product_template_id: template.id,
-        answers:             productAnswers,
       }
+    })
 
-      const data = await publicFetch('/enquiry', {
-        method: 'POST',
-        body:   JSON.stringify(payload),
-      })
+    const payload = {
+      first_name:          answers.first_name,
+      last_name:           answers.last_name,
+      email:               answers.email,
+      phone:               answers.phone        || null,
+      company_name:        answers.company_name || null,
+      product_template_id: template.id,
+      answers:             productAnswers,
+    }
+
+    const opts = { method: 'POST', body: JSON.stringify(payload) }
+
+    const attempt = async (isRetry) => {
+      if (isRetry) setSubmitMsg('Server is waking up — retrying…')
+      return fetchWithTimeout('/enquiry', opts)
+    }
+
+    try {
+      let data
+      try {
+        data = await attempt(false)
+      } catch (firstErr) {
+        const isNetwork = firstErr.name === 'AbortError' || firstErr.message === 'Failed to fetch' || firstErr.name === 'TypeError'
+        if (isNetwork) {
+          setSubmitMsg('Server is waking up — retrying in 3 seconds…')
+          await new Promise(r => setTimeout(r, 3000))
+          data = await attempt(true)
+        } else {
+          throw firstErr
+        }
+      }
+      try { localStorage.removeItem(DRAFT_KEY) } catch (_) {}
       setResult(data)
     } catch (e) {
-      setError(e.message)
+      const isNetwork = e.name === 'AbortError' || e.message === 'Failed to fetch' || e.name === 'TypeError'
+      setError(
+        isNetwork
+          ? 'The quote server did not respond in time. Your answers are saved on this page — please wait 10 seconds and press Submit again.'
+          : `Could not submit your enquiry: ${e.message}`
+      )
     } finally {
       setSubmitting(false)
+      setSubmitMsg('')
     }
   }
 
@@ -139,6 +211,19 @@ export default function GetQuote() {
   return (
     <Page>
       <Card>
+        {/* Warm-up banner */}
+        {warmup === 'warming' && (
+          <div style={s.warmupBanner}>
+            <span style={s.warmupSpinner}>⟳</span>
+            Preparing quote system… this may take a few seconds.
+          </div>
+        )}
+        {warmup === 'slow' && (
+          <div style={{ ...s.warmupBanner, background: '#fffbeb', borderColor: '#fcd34d', color: '#92400e' }}>
+            The quote system is taking longer than usual to respond. You can still complete the form — if submission fails, please try again in a moment.
+          </div>
+        )}
+
         {/* Header */}
         <div style={s.header}>
           <div style={s.logo}>Top-R Solutions</div>
@@ -185,14 +270,23 @@ export default function GetQuote() {
           />
         </div>
 
+        {submitMsg && (
+          <p style={{ fontSize: 13, color: '#2563eb', marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+            {submitMsg}
+          </p>
+        )}
         {error && (
-          <p style={{ color: '#dc2626', fontSize: 13, marginTop: 12 }}>{error}</p>
+          <div style={s.errorBox}>
+            <strong>Submission failed</strong>
+            <p style={{ margin: '4px 0 0', fontWeight: 400 }}>{error}</p>
+          </div>
         )}
 
         {/* Navigation */}
         <div style={s.actions}>
           {stepIndex > 0 && (
-            <button style={s.btnSecondary} onClick={() => setStepIndex(i => i - 1)}>
+            <button style={s.btnSecondary} onClick={() => setStepIndex(i => i - 1)} disabled={submitting}>
               ← Back
             </button>
           )}
@@ -206,11 +300,11 @@ export default function GetQuote() {
             </button>
           ) : (
             <button
-              style={{ ...s.btn, opacity: submitting ? 0.7 : 1 }}
+              style={{ ...s.btn, opacity: submitting ? 0.7 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}
               disabled={submitting}
               onClick={handleSubmit}
             >
-              {submitting ? 'Sending…' : 'Submit Enquiry'}
+              {submitting ? 'Submitting…' : 'Submit Enquiry'}
             </button>
           )}
         </div>
@@ -582,6 +676,7 @@ function TagGroup({ field, answers, set }) {
 function Page({ children }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f3f4f6', padding: '32px 16px', fontFamily: 'system-ui, sans-serif' }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
       {children}
     </div>
   )
@@ -635,6 +730,9 @@ const s = {
   btnSecondary: { background: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: 8, padding: '11px 20px', fontSize: 14, cursor: 'pointer' },
   refBox:       { background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 24px', display: 'inline-block' },
   footer:       { borderTop: '1px solid #e5e7eb', paddingTop: 16, marginTop: 32, fontSize: 12, color: '#9ca3af', textAlign: 'center' },
-  openingGroup: { marginBottom: 20, padding: '14px 16px', background: '#f9fafb', borderRadius: 8, border: '1px solid #f3f4f6' },
-  openingLabel: { fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 },
+  openingGroup:  { marginBottom: 20, padding: '14px 16px', background: '#f9fafb', borderRadius: 8, border: '1px solid #f3f4f6' },
+  openingLabel:  { fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 },
+  warmupBanner:  { background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: 8 },
+  warmupSpinner: { display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: 16 },
+  errorBox:      { background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginTop: 12, fontSize: 13, color: '#dc2626', fontWeight: 600 },
 }

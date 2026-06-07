@@ -12,6 +12,12 @@ from app.db import get_db
 router = APIRouter(tags=["system"])
 
 
+@router.get("/ping")
+def ping():
+    """Lightweight liveness check — no DB, no Redis. Used by frontend to warm up Render free tier."""
+    return {"ok": True}
+
+
 @router.get("/debug/pdf-env")
 def pdf_env():
     """Confirm PDF dependencies are available in the Render container."""
