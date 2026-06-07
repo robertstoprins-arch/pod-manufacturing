@@ -225,6 +225,8 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
   const [generatingLink, setGeneratingLink] = useState(false)
   const [paymentUpdating, setPaymentUpdating] = useState(false)
   const [invoiceDownloading, setInvoiceDownloading] = useState(false)
+  const [syncingEstimate, setSyncingEstimate] = useState(false)
+  const [syncEstimateMsg, setSyncEstimateMsg] = useState('')
   const [rfqView, setRfqView] = useState('bom')   // 'bom' | 'comparison'
   const [comparison, setComparison] = useState(null)
   const [compLoading, setCompLoading] = useState(false)
@@ -585,6 +587,32 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
                         <div className="text-[11px] text-blue-400 mt-1 mb-2">{pe.addons_applied.join(' · ')}</div>
                       )}
                       <div className="text-[10px] text-gray-400 italic">{pe.disclaimer}</div>
+                      {(!quote.total_inc_vat || Number(quote.total_inc_vat) === 0) && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={syncingEstimate}
+                            onClick={async () => {
+                              setSyncingEstimate(true)
+                              setSyncEstimateMsg('')
+                              try {
+                                const res = await api(`/quotes/${quote.id}/sync-estimate`, { method: 'POST' })
+                                setQuote(q => ({ ...q, total_ex_vat: res.total_ex_vat, total_inc_vat: res.total_inc_vat, pod_spec_id: res.pod_spec_id }))
+                                setSyncEstimateMsg(res.message)
+                                onUpdated?.()
+                              } catch (e) {
+                                setSyncEstimateMsg(e.message || 'Sync failed')
+                              } finally {
+                                setSyncingEstimate(false)
+                              }
+                            }}
+                            className="text-[11px] px-2.5 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {syncingEstimate ? 'Syncing…' : 'Sync estimate to quote price'}
+                          </button>
+                          {syncEstimateMsg && <span className="text-[11px] text-gray-500">{syncEstimateMsg}</span>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

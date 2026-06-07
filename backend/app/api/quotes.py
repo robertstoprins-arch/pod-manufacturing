@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AccountSettings, Quote, QuoteEvent
+from app.models import AccountSettings, PodSpec, Quote, QuoteEvent
 from app.api.email_service import send_email
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
@@ -826,4 +826,71 @@ def send_to_client(quote_id: uuid.UUID, body: SendToClientIn, db: Db):
         email_status=result.status,
         email_message=result.message,
         client_portal_url=portal_url,
+    )
+
+
+# ── Backfill: sync spec_snapshot estimate → quote price + create PodSpec ───────
+
+class SyncEstimateOut(BaseModel):
+    ok: bool
+    total_ex_vat: float | None = None
+    total_inc_vat: float | None = None
+    pod_spec_id: int | None = None
+    message: str
+
+
+@router.post("/{quote_id}/sync-estimate", response_model=SyncEstimateOut)
+def sync_estimate(quote_id: uuid.UUID, db: Db):
+    """Backfill price + PodSpec for existing enquiry quotes that have a pricing
+    estimate in spec_snapshot but no total_inc_vat or pod_spec_id set."""
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if not quote:
+        raise HTTPException(404, "Quote not found")
+
+    snap = quote.spec_snapshot or {}
+    pe = snap.get("pricing_estimate") or {}
+    qa = snap.get("questionnaire_answers") or snap
+
+    if pe.get("status") != "estimated":
+        raise HTTPException(400, "No usable pricing estimate in spec_snapshot (status != 'estimated')")
+
+    messages = []
+
+    # Sync price columns
+    if not quote.total_inc_vat or float(quote.total_inc_vat) == 0:
+        quote.total_ex_vat  = pe.get("total_ex_vat")
+        quote.total_inc_vat = pe.get("total_inc_vat")
+        messages.append("price synced from estimate")
+
+    # Create PodSpec if missing
+    if not quote.pod_spec_id:
+        w = qa.get("width_m")
+        l = qa.get("length_m")
+        h = qa.get("height_m")
+        pod_spec = PodSpec(
+            name=quote.title or "Enquiry Pod",
+            geometry={
+                "width_m":  float(w) if w else None,
+                "length_m": float(l) if l else None,
+                "height_m": float(h) if h else None,
+                "source":   "enquiry_backfill",
+            },
+            status="draft",
+        )
+        db.add(pod_spec)
+        db.flush()
+        quote.pod_spec_id = pod_spec.id
+        messages.append(f"PodSpec #{pod_spec.id} created")
+
+    _add_event(db, quote, "estimate_synced", quote.status, quote.status,
+               "Estimate synced from spec_snapshot: " + "; ".join(messages), "internal")
+    db.commit()
+    db.refresh(quote)
+
+    return SyncEstimateOut(
+        ok=True,
+        total_ex_vat=float(quote.total_ex_vat) if quote.total_ex_vat else None,
+        total_inc_vat=float(quote.total_inc_vat) if quote.total_inc_vat else None,
+        pod_spec_id=quote.pod_spec_id,
+        message="; ".join(messages) or "nothing to sync",
     )
