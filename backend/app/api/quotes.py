@@ -138,9 +138,19 @@ class QuoteOut(BaseModel):
     client_responded_at: datetime | None
     client_response: str | None
     client_response_note: str | None
+    spec_snapshot: dict | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _spec_fields(snap: dict | None) -> dict:
+    """Extract flat spec fields from old flat snapshot or new nested questionnaire snapshot."""
+    if not snap:
+        return {}
+    qa = snap.get("questionnaire_answers")
+    if isinstance(qa, dict):
+        return qa
+    return snap
 
 def _add_event(db: Session, quote: Quote, event_type: str, old_status: str | None,
                new_status: str | None, note: str | None, created_by: str | None):
@@ -479,7 +489,7 @@ def get_deposit_invoice(quote_id: uuid.UUID, db: Db):
         "deposit_percent": float(quote.deposit_percent) if quote.deposit_percent else None,
         "deposit_amount":  float(quote.deposit_amount) if quote.deposit_amount else None,
         "notes":           quote.notes,
-        "spec_summary":    quote.spec_snapshot,
+        "spec_summary":    _spec_fields(quote.spec_snapshot),
     }
 
     pdf_bytes = build_deposit_invoice(quote_dict, settings_dict)

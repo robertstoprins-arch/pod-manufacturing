@@ -59,27 +59,6 @@ def pdf_test():
         return {"error": str(exc), "traceback": traceback.format_exc()}
 
 
-@router.get("/env-debug")
-def env_debug():
-    """Returns masked env state — for diagnosing Vercel deployment."""
-    db_url = os.environ.get("DATABASE_URL", "")
-    masked = ""
-    if db_url and "@" in db_url:
-        parts = db_url.split("@")
-        masked = parts[0][:20] + "***@" + parts[-1]
-    elif db_url:
-        masked = db_url[:30] + "..."
-    else:
-        masked = "<NOT SET>"
-    return {
-        "DATABASE_URL_masked": masked,
-        "DATABASE_URL_len": len(db_url),
-        "DATABASE_URL_empty": db_url == "",
-        "CLERK_JWKS_URL_set": bool(os.environ.get("CLERK_JWKS_URL")),
-        "REDIS_URL_set": bool(os.environ.get("REDIS_URL")),
-    }
-
-
 
 @router.get("/health")
 def health_check(db: Session = Depends(get_db)):

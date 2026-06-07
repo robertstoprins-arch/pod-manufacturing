@@ -388,6 +388,18 @@ def unaward_rfq_request(quote_id: uuid.UUID, request_id: uuid.UUID, db: Db):
     req.status = "responded"
     req.awarded_at = None
     req.awarded_by = None
+
+    quote = db.query(Quote).filter(Quote.id == quote_id).first()
+    if quote:
+        db.add(QuoteEvent(
+            quote_id=quote_id,
+            event_type="supplier_unawarded",
+            old_status=quote.status,
+            new_status=quote.status,
+            note=f"Award removed from {req.supplier_name}",
+            created_by="internal",
+        ))
+
     db.commit()
 
 

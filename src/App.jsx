@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react'
 import Sidebar from './components/Sidebar'
-import Dashboard from './components/Dashboard'
+import DashboardPage from './pages/Dashboard'
 import PodDesigner from './components/PodDesigner'
 import Orders from './components/Orders'
 import Production from './components/Production'
@@ -35,7 +35,7 @@ export default function App() {
   }, [])
 
   const pages = {
-    dashboard:        <Dashboard />,
+    dashboard:        <DashboardPage setPage={setPage} />,
     designer:         <PodDesigner />,
     build_ups:        <BuildUpEditor />,
     materials:        <MaterialLibraryPage />,

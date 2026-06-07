@@ -38,8 +38,10 @@ class ClerkClaims:
     org_role: str | None
 
 
-def require_auth(authorization: str = Header(...)) -> ClerkClaims:
+def require_auth(authorization: str | None = Header(default=None)) -> ClerkClaims:
     """FastAPI dependency — raises 401 if the token is absent or invalid."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Bearer token")
     token = authorization[7:]

@@ -44,6 +44,7 @@ from app.api.suppliers import router as suppliers_router
 from app.api.rfq_respond import router_quotes as rfq_quotes_router, router_public as rfq_public_router
 from app.api.quote_portal import router_internal as portal_internal_router, router_public as portal_public_router
 from app.api.enquiry import router as enquiry_router
+from app.api.dashboard import router as dashboard_router
 
 _auth = [Depends(require_auth)]
 
@@ -93,6 +94,7 @@ app.include_router(rfq_public_router)                                       # pu
 app.include_router(portal_internal_router,         dependencies=_auth)  # internal: generate client link
 app.include_router(portal_public_router)                                    # public: client view + respond
 app.include_router(enquiry_router)                                          # public: website quote hook
+app.include_router(dashboard_router,               dependencies=_auth)      # internal: operational dashboard
 
 
 @app.get("/ping", tags=["health"])

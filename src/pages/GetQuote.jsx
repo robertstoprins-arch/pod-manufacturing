@@ -1,3 +1,23 @@
+/**
+ * Public quote enquiry form.
+ *
+ * Renders a multi-step questionnaire driven by a ProductTemplate config.
+ * The active template is loaded from src/config/productTemplates.js.
+ *
+ * To add a second product type:
+ *   1. Define the template in productTemplates.js + backend product_templates.py.
+ *   2. Set status: 'active' on the new template.
+ *   3. If multiple templates are active, show a product-selector step before
+ *      the contact step (not needed until there is more than one).
+ *
+ * Submitted answers are posted to POST /enquiry as:
+ *   { first_name, last_name, email, phone, company_name,
+ *     product_template_id, answers: { ...all product/project fields } }
+ */
+
+import { useState } from 'react'
+import { getDefaultTemplate, stepFields } from '../config/productTemplates'
+
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 async function publicFetch(path, opts = {}) {
@@ -12,68 +32,82 @@ async function publicFetch(path, opts = {}) {
   return res.json()
 }
 
-const POD_TYPES = [
-  { value: 'bathroom', label: 'Bathroom Pod',  desc: 'Full bathroom with shower, WC and vanity' },
-  { value: 'shower',   label: 'Shower Pod',    desc: 'Shower enclosure with wet room finish' },
-  { value: 'wc',       label: 'WC Pod',        desc: 'Compact toilet compartment' },
-  { value: 'office',   label: 'Office Pod',    desc: 'Acoustic workspace or meeting pod' },
-  { value: 'kitchen',  label: 'Kitchen Pod',   desc: 'Compact kitchen or kitchenette unit' },
-  { value: 'custom',   label: 'Custom',        desc: 'Something else — describe in notes' },
-]
-
-const TIMELINES = [
-  { value: 'asap',     label: 'As soon as possible' },
-  { value: '3months',  label: 'Within 3 months' },
-  { value: '6months',  label: 'Within 6 months' },
-  { value: '12months', label: 'Within 12 months' },
-]
-
-const USES = [
-  { value: 'hotel',       label: 'Hotel / Hospitality' },
-  { value: 'residential', label: 'Residential' },
-  { value: 'student',     label: 'Student Housing' },
-  { value: 'healthcare',  label: 'Healthcare' },
-  { value: 'office',      label: 'Office / Commercial' },
-  { value: 'other',       label: 'Other' },
-]
-
 export default function GetQuote() {
-  const [step, setStep] = useState(1)
-  const [form, setForm] = useState({
-    first_name: '', last_name: '', email: '', phone: '', company_name: '',
-    pod_type: '', quantity: 1, size_option: '', width_m: '', length_m: '',
-    location: '', intended_use: '', timeline: '', budget_range: '', notes: '',
+  const template = getDefaultTemplate()
+
+  // Build initial answers from field defaults
+  const [answers, setAnswers] = useState(() => {
+    const init = {}
+    if (template) {
+      template.fields.forEach(f => {
+        init[f.key] = f.default !== undefined ? f.default : ''
+      })
+    }
+    return init
   })
+
+  const [stepIndex, setStepIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  if (!template) {
+    return (
+      <Page>
+        <Card>
+          <p style={{ color: '#dc2626', textAlign: 'center', padding: 32 }}>
+            No active product template found. Please contact us directly.
+          </p>
+        </Card>
+      </Page>
+    )
+  }
 
-  const step1Valid = form.first_name && form.last_name && form.email
-  const step2Valid = form.pod_type
+  const set = (key, value) => setAnswers(a => ({ ...a, [key]: value }))
+  const steps = template.steps
+  const currentStep = steps[stepIndex]
+  const currentFields = stepFields(template, currentStep.id)
+
+  // Validate current step: all required fields in this step have a value
+  const stepValid = currentFields
+    .filter(f => f.required)
+    .every(f => {
+      const v = answers[f.key]
+      return v !== '' && v !== null && v !== undefined
+    })
 
   async function handleSubmit() {
     setSubmitting(true)
     setError(null)
     try {
+      // Separate contact fields from product/project answers
+      const contactFields = stepFields(template, 'contact').map(f => f.key)
+      const productAnswers = {}
+      Object.entries(answers).forEach(([k, v]) => {
+        if (!contactFields.includes(k)) {
+          // Coerce number fields
+          const field = template.fields.find(f => f.key === k)
+          if (field?.type === 'number' && v !== '' && v !== null) {
+            productAnswers[k] = Number(v)
+          } else {
+            productAnswers[k] = v || null
+          }
+        }
+      })
+
       const payload = {
-        ...form,
-        quantity: parseInt(form.quantity) || 1,
-        width_m:  form.width_m  ? parseFloat(form.width_m)  : null,
-        length_m: form.length_m ? parseFloat(form.length_m) : null,
-        phone:        form.phone        || null,
-        company_name: form.company_name || null,
-        size_option:  form.size_option  || null,
-        location:     form.location     || null,
-        intended_use: form.intended_use || null,
-        timeline:     form.timeline     || null,
-        budget_range: form.budget_range || null,
-        notes:        form.notes        || null,
+        first_name:           answers.first_name,
+        last_name:            answers.last_name,
+        email:                answers.email,
+        phone:                answers.phone        || null,
+        company_name:         answers.company_name || null,
+        product_template_id:  template.id,
+        answers:              productAnswers,
       }
+
       const data = await publicFetch('/enquiry', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body:   JSON.stringify(payload),
       })
       setResult(data)
     } catch (e) {
@@ -83,32 +117,34 @@ export default function GetQuote() {
     }
   }
 
-  if (result) return (
-    <Page>
-      <Card>
-        <div style={{ textAlign: 'center', padding: '32px 0' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
-          <h2 style={{ margin: '0 0 8px', fontSize: 22, color: '#111827', fontWeight: 700 }}>
-            Enquiry Received
-          </h2>
-          <p style={{ color: '#6b7280', fontSize: 14, margin: '0 0 24px' }}>
-            {result.message}
-          </p>
-          <div style={s.refBox}>
-            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
-              Your reference
+  if (result) {
+    return (
+      <Page>
+        <Card>
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 22, color: '#111827', fontWeight: 700 }}>
+              Enquiry Received
+            </h2>
+            <p style={{ color: '#6b7280', fontSize: 14, margin: '0 0 24px' }}>
+              {result.message}
+            </p>
+            <div style={s.refBox}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
+                Your reference
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#111827', letterSpacing: 1 }}>
+                {result.reference}
+              </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#111827', letterSpacing: 1 }}>
-              {result.reference}
-            </div>
+            <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 24 }}>
+              Questions? <a href="mailto:info@top-r.com" style={{ color: '#2563eb' }}>info@top-r.com</a>
+            </p>
           </div>
-          <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 24 }}>
-            Questions? <a href="mailto:info@top-r.com" style={{ color: '#2563eb' }}>info@top-r.com</a>
-          </p>
-        </div>
-      </Card>
-    </Page>
-  )
+        </Card>
+      </Page>
+    )
+  }
 
   return (
     <Page>
@@ -122,166 +158,68 @@ export default function GetQuote() {
           </div>
         </div>
 
-        {/* Progress */}
+        {/* Progress bar */}
         <div style={s.progress}>
-          {[1, 2, 3].map(n => (
-            <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {steps.map((step, i) => (
+            <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{
                 ...s.stepDot,
-                background: step >= n ? '#2563eb' : '#e5e7eb',
-                color: step >= n ? '#fff' : '#9ca3af',
-              }}>{n}</div>
-              <span style={{ fontSize: 12, color: step === n ? '#111827' : '#9ca3af', fontWeight: step === n ? 600 : 400 }}>
-                {n === 1 ? 'Contact' : n === 2 ? 'Pod Type' : 'Project Details'}
+                background: stepIndex >= i ? '#2563eb' : '#e5e7eb',
+                color:      stepIndex >= i ? '#fff'    : '#9ca3af',
+              }}>{i + 1}</div>
+              <span style={{
+                fontSize:   12,
+                color:      stepIndex === i ? '#111827' : '#9ca3af',
+                fontWeight: stepIndex === i ? 600 : 400,
+              }}>
+                {step.nav_label}
               </span>
-              {n < 3 && <div style={{ flex: 1, height: 1, background: '#e5e7eb', minWidth: 20 }} />}
+              {i < steps.length - 1 && (
+                <div style={{ flex: 1, height: 1, background: '#e5e7eb', minWidth: 20 }} />
+              )}
             </div>
           ))}
         </div>
 
-        {/* Step 1 — Contact */}
-        {step === 1 && (
-          <div style={s.stepBody}>
-            <div style={s.sectionTitle}>Your contact details</div>
-            <div style={s.row2}>
-              <Input label="First name *" value={form.first_name} onChange={v => set('first_name', v)} />
-              <Input label="Last name *"  value={form.last_name}  onChange={v => set('last_name', v)} />
-            </div>
-            <Input label="Email address *" type="email" value={form.email} onChange={v => set('email', v)} />
-            <div style={s.row2}>
-              <Input label="Phone"        value={form.phone}        onChange={v => set('phone', v)} />
-              <Input label="Company name" value={form.company_name} onChange={v => set('company_name', v)} />
-            </div>
-            <div style={s.actions}>
-              <button
-                style={{ ...s.btn, opacity: step1Valid ? 1 : 0.5 }}
-                disabled={!step1Valid}
-                onClick={() => setStep(2)}
-              >
-                Next: Pod Type →
-              </button>
-            </div>
-          </div>
+        {/* Step body */}
+        <div style={s.stepBody}>
+          <StepRenderer
+            step={currentStep}
+            fields={currentFields}
+            answers={answers}
+            set={set}
+          />
+        </div>
+
+        {error && (
+          <p style={{ color: '#dc2626', fontSize: 13, marginTop: 12 }}>{error}</p>
         )}
 
-        {/* Step 2 — Pod Type */}
-        {step === 2 && (
-          <div style={s.stepBody}>
-            <div style={s.sectionTitle}>What type of pod do you need?</div>
-            <div style={s.podGrid}>
-              {POD_TYPES.map(pt => (
-                <button
-                  key={pt.value}
-                  onClick={() => set('pod_type', pt.value)}
-                  style={{
-                    ...s.podCard,
-                    borderColor: form.pod_type === pt.value ? '#2563eb' : '#e5e7eb',
-                    background:  form.pod_type === pt.value ? '#eff6ff' : '#fff',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 14, color: form.pod_type === pt.value ? '#1d4ed8' : '#111827' }}>
-                    {pt.label}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{pt.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 20 }}>
-              <div style={s.sectionTitle}>Quantity</div>
-              <input
-                type="number" min={1} max={100}
-                value={form.quantity}
-                onChange={e => set('quantity', e.target.value)}
-                style={{ ...s.input, width: 80 }}
-              />
-            </div>
-
-            <div style={{ marginTop: 20 }}>
-              <div style={s.sectionTitle}>Approximate size (optional)</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {['small', 'medium', 'large'].map(sz => (
-                  <button key={sz} onClick={() => set('size_option', form.size_option === sz ? '' : sz)}
-                    style={{ ...s.tagBtn, borderColor: form.size_option === sz ? '#2563eb' : '#e5e7eb', background: form.size_option === sz ? '#eff6ff' : '#fff', color: form.size_option === sz ? '#1d4ed8' : '#374151' }}>
-                    {sz.charAt(0).toUpperCase() + sz.slice(1)} {sz === 'small' ? '(<6m²)' : sz === 'medium' ? '(6–12m²)' : '(>12m²)'}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-                <Input label="Width (m)" type="number" value={form.width_m} onChange={v => set('width_m', v)} style={{ width: 100 }} />
-                <span style={{ paddingTop: 20, color: '#9ca3af' }}>×</span>
-                <Input label="Length (m)" type="number" value={form.length_m} onChange={v => set('length_m', v)} style={{ width: 100 }} />
-              </div>
-            </div>
-
-            <div style={s.actions}>
-              <button style={s.btnSecondary} onClick={() => setStep(1)}>← Back</button>
-              <button
-                style={{ ...s.btn, opacity: step2Valid ? 1 : 0.5 }}
-                disabled={!step2Valid}
-                onClick={() => setStep(3)}
-              >
-                Next: Project Details →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3 — Project details */}
-        {step === 3 && (
-          <div style={s.stepBody}>
-            <div style={s.sectionTitle}>Project location</div>
-            <Input label="City / Country" value={form.location} onChange={v => set('location', v)} />
-
-            <div style={{ marginTop: 20 }}>
-              <div style={s.sectionTitle}>Intended use</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {USES.map(u => (
-                  <button key={u.value} onClick={() => set('intended_use', form.intended_use === u.value ? '' : u.value)}
-                    style={{ ...s.tagBtn, borderColor: form.intended_use === u.value ? '#2563eb' : '#e5e7eb', background: form.intended_use === u.value ? '#eff6ff' : '#fff', color: form.intended_use === u.value ? '#1d4ed8' : '#374151' }}>
-                    {u.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 20 }}>
-              <div style={s.sectionTitle}>Timeline</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {TIMELINES.map(t => (
-                  <button key={t.value} onClick={() => set('timeline', form.timeline === t.value ? '' : t.value)}
-                    style={{ ...s.tagBtn, borderColor: form.timeline === t.value ? '#2563eb' : '#e5e7eb', background: form.timeline === t.value ? '#eff6ff' : '#fff', color: form.timeline === t.value ? '#1d4ed8' : '#374151' }}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 20 }}>
-              <div style={s.sectionTitle}>Notes or special requirements (optional)</div>
-              <textarea
-                rows={4}
-                value={form.notes}
-                onChange={e => set('notes', e.target.value)}
-                placeholder="Anything else we should know — finishes, access constraints, site conditions…"
-                style={s.textarea}
-              />
-            </div>
-
-            {error && <p style={{ color: '#dc2626', fontSize: 13, marginTop: 12 }}>{error}</p>}
-
-            <div style={s.actions}>
-              <button style={s.btnSecondary} onClick={() => setStep(2)}>← Back</button>
-              <button
-                style={{ ...s.btn, opacity: submitting ? 0.7 : 1 }}
-                disabled={submitting}
-                onClick={handleSubmit}
-              >
-                {submitting ? 'Sending…' : 'Submit Enquiry'}
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Navigation */}
+        <div style={s.actions}>
+          {stepIndex > 0 && (
+            <button style={s.btnSecondary} onClick={() => setStepIndex(i => i - 1)}>
+              ← Back
+            </button>
+          )}
+          {stepIndex < steps.length - 1 ? (
+            <button
+              style={{ ...s.btn, opacity: stepValid ? 1 : 0.5 }}
+              disabled={!stepValid}
+              onClick={() => setStepIndex(i => i + 1)}
+            >
+              Next: {steps[stepIndex + 1].nav_label} →
+            </button>
+          ) : (
+            <button
+              style={{ ...s.btn, opacity: submitting ? 0.7 : 1 }}
+              disabled={submitting}
+              onClick={handleSubmit}
+            >
+              {submitting ? 'Sending…' : 'Submit Enquiry'}
+            </button>
+          )}
+        </div>
 
         <div style={s.footer}>
           Top-R Solutions · <a href="mailto:info@top-r.com" style={{ color: '#2563eb' }}>info@top-r.com</a>
@@ -291,25 +229,202 @@ export default function GetQuote() {
   )
 }
 
+// ── Step renderer — dispatches each field to the right input component ───────
+
+function StepRenderer({ step, fields, answers, set }) {
+  // Group contact fields into pairs for 2-column layout
+  if (step.id === 'contact') {
+    return (
+      <>
+        <div style={s.sectionTitle}>{step.title}</div>
+        <div style={s.row2}>
+          <FieldInput field={fields.find(f => f.key === 'first_name')} answers={answers} set={set} />
+          <FieldInput field={fields.find(f => f.key === 'last_name')}  answers={answers} set={set} />
+        </div>
+        <FieldInput field={fields.find(f => f.key === 'email')}        answers={answers} set={set} />
+        <div style={{ ...s.row2, marginTop: 12 }}>
+          <FieldInput field={fields.find(f => f.key === 'phone')}        answers={answers} set={set} />
+          <FieldInput field={fields.find(f => f.key === 'company_name')} answers={answers} set={set} />
+        </div>
+      </>
+    )
+  }
+
+  // All other steps: render fields in declaration order
+  return (
+    <>
+      {fields.map(field => (
+        <div key={field.key} style={{ marginBottom: 20 }}>
+          <FieldInput field={field} answers={answers} set={set} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+// ── Individual field renderer ─────────────────────────────────────────────────
+
+function FieldInput({ field, answers, set }) {
+  if (!field) return null
+  const value = answers[field.key] ?? ''
+
+  switch (field.type) {
+    case 'select_card':
+      return (
+        <>
+          <div style={s.sectionTitle}>{field.customer_label}</div>
+          <div style={s.podGrid}>
+            {field.options.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => set(field.key, opt.value)}
+                style={{
+                  ...s.podCard,
+                  borderColor: value === opt.value ? '#2563eb' : '#e5e7eb',
+                  background:  value === opt.value ? '#eff6ff' : '#fff',
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 14, color: value === opt.value ? '#1d4ed8' : '#111827' }}>
+                  {opt.label}
+                </div>
+                {opt.description && (
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{opt.description}</div>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )
+
+    case 'select_tag':
+      return (
+        <>
+          <div style={s.sectionTitle}>{field.customer_label}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {field.options.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => set(field.key, value === opt.value ? '' : opt.value)}
+                style={{
+                  ...s.tagBtn,
+                  borderColor: value === opt.value ? '#2563eb' : '#e5e7eb',
+                  background:  value === opt.value ? '#eff6ff' : '#fff',
+                  color:       value === opt.value ? '#1d4ed8' : '#374151',
+                }}
+              >
+                {opt.label}{opt.description ? ` (${opt.description})` : ''}
+              </button>
+            ))}
+          </div>
+        </>
+      )
+
+    case 'textarea':
+      return (
+        <>
+          <div style={s.sectionTitle}>{field.customer_label}</div>
+          <textarea
+            rows={4}
+            value={value}
+            onChange={e => set(field.key, e.target.value)}
+            placeholder={field.placeholder || ''}
+            style={s.textarea}
+          />
+        </>
+      )
+
+    case 'number': {
+      const v = field.validation || {}
+      // Special layout: width + length shown side by side
+      if (field.key === 'length_m') return null  // rendered with width_m below
+      if (field.key === 'width_m') {
+        const lengthField = { key: 'length_m', customer_label: 'Length (m)', type: 'number',
+          placeholder: 'e.g. 5.0', validation: { min: 1.0, max: 15.0, step: 0.1 } }
+        return (
+          <>
+            <div style={s.sectionTitle}>Dimensions (optional)</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <InlineInput
+                label="Width (m)"
+                type="number"
+                value={answers.width_m ?? ''}
+                placeholder={field.placeholder}
+                min={field.validation?.min} max={field.validation?.max} step={field.validation?.step}
+                onChange={v => set('width_m', v)}
+                style={{ width: 110 }}
+              />
+              <span style={{ paddingTop: 18, color: '#9ca3af' }}>×</span>
+              <InlineInput
+                label="Length (m)"
+                type="number"
+                value={answers.length_m ?? ''}
+                placeholder={lengthField.placeholder}
+                min={lengthField.validation?.min} max={lengthField.validation?.max} step={lengthField.validation?.step}
+                onChange={v => set('length_m', v)}
+                style={{ width: 110 }}
+              />
+            </div>
+          </>
+        )
+      }
+      // Quantity (and any other standalone number field)
+      return (
+        <>
+          <div style={s.sectionTitle}>{field.customer_label}</div>
+          <input
+            type="number"
+            value={value}
+            min={v.min} max={v.max} step={v.step || 1}
+            placeholder={field.placeholder || ''}
+            onChange={e => set(field.key, e.target.value)}
+            style={{ ...s.input, width: 80 }}
+          />
+        </>
+      )
+    }
+
+    default:
+      return (
+        <InlineInput
+          label={`${field.customer_label}${field.required ? ' *' : ''}`}
+          type={field.type}
+          value={value}
+          placeholder={field.placeholder || ''}
+          onChange={v => set(field.key, v)}
+        />
+      )
+  }
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-import { useState } from 'react'
-
 function Page({ children }) {
-  return <div style={{ minHeight: '100vh', background: '#f3f4f6', padding: '32px 16px', fontFamily: 'system-ui, sans-serif' }}>{children}</div>
+  return (
+    <div style={{ minHeight: '100vh', background: '#f3f4f6', padding: '32px 16px', fontFamily: 'system-ui, sans-serif' }}>
+      {children}
+    </div>
+  )
 }
 
 function Card({ children }) {
-  return <div style={{ maxWidth: 640, margin: '0 auto', background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>{children}</div>
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto', background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+      {children}
+    </div>
+  )
 }
 
-function Input({ label, value, onChange, type = 'text', style: extraStyle }) {
+function InlineInput({ label, value, onChange, type = 'text', placeholder = '', min, max, step, style: extraStyle }) {
   return (
     <div style={{ flex: 1, minWidth: 120, ...extraStyle }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 4 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#374151', marginBottom: 4 }}>
+        {label}
+      </label>
       <input
         type={type}
         value={value}
+        placeholder={placeholder}
+        min={min} max={max} step={step}
         onChange={e => onChange(e.target.value)}
         style={s.input}
       />

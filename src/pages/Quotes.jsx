@@ -412,6 +412,40 @@ function QuoteDetailModal({ quote: initialQuote, clients, onClose, onUpdated }) 
             <div className="mt-2 bg-gray-50 rounded p-3 text-xs text-gray-600 whitespace-pre-wrap">{quote.notes}</div>
           )}
 
+          {/* Enquiry Details — shown for quotes created via the web enquiry form */}
+          {quote.spec_snapshot?.questionnaire_answers && (() => {
+            const qa = quote.spec_snapshot.questionnaire_answers
+            const rows = [
+              { label: 'Pod Type',    value: qa.pod_type },
+              { label: 'Quantity',    value: qa.quantity },
+              { label: 'Size',        value: qa.size_option },
+              { label: 'Width',       value: qa.width_m   != null ? `${qa.width_m} m`   : null },
+              { label: 'Length',      value: qa.length_m  != null ? `${qa.length_m} m`  : null },
+              { label: 'Height',      value: qa.height_m  != null ? `${qa.height_m} m`  : null },
+              { label: 'Location',    value: qa.location },
+              { label: 'Intended Use', value: qa.intended_use },
+              { label: 'Timeline',    value: qa.timeline },
+              { label: 'Foundation',  value: qa.foundation_option },
+              { label: 'Delivery',    value: qa.delivery_option },
+              { label: 'Heating',     value: qa.heating_option },
+              { label: 'Electrical',  value: qa.electrical_package },
+            ].filter(r => r.value != null && r.value !== '')
+            if (!rows.length) return null
+            return (
+              <div className="mt-3 border border-blue-100 bg-blue-50 rounded-lg p-3">
+                <div className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide mb-2">Enquiry Details</div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                  {rows.map(r => (
+                    <InfoRow key={r.label} label={r.label}>{String(r.value)}</InfoRow>
+                  ))}
+                </div>
+                {qa.notes && (
+                  <div className="mt-2 text-[11px] text-gray-500 italic whitespace-pre-wrap">{qa.notes}</div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* Deposit & payment — shown when quote has pricing */}
           {(quote.deposit_amount != null || quote.deposit_percent != null || quote.total_ex_vat != null) && (
             <div className="mt-3 border border-gray-100 rounded-lg p-3 space-y-2">

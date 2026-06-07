@@ -112,8 +112,10 @@ export default function ClientQuoteView() {
           <div style={s.section}>
             <div style={s.sectionTitle}>Pod Specification</div>
             <div style={s.specGrid}>
+              {quote.spec_summary.pod_type && <SpecItem label="Type" value={quote.spec_summary.pod_type} />}
               {quote.spec_summary.width_m && <SpecItem label="Width" value={`${quote.spec_summary.width_m} m`} />}
               {quote.spec_summary.length_m && <SpecItem label="Length" value={`${quote.spec_summary.length_m} m`} />}
+              {quote.spec_summary.height_m && <SpecItem label="Height" value={`${quote.spec_summary.height_m} m`} />}
               {quote.spec_summary.wall_height_m && <SpecItem label="Wall Height" value={`${quote.spec_summary.wall_height_m} m`} />}
               {quote.spec_summary.floor_area_m2 && <SpecItem label="Floor Area" value={`${quote.spec_summary.floor_area_m2} m²`} />}
               {quote.spec_summary.roof_type && <SpecItem label="Roof Type" value={quote.spec_summary.roof_type} />}
@@ -182,12 +184,18 @@ export default function ClientQuoteView() {
         {!confirmed && (
           <div style={s.section}>
             <div style={s.sectionTitle}>Your Response</div>
+            {!quote.total_inc_vat && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e' }}>
+                This quote has not been priced yet. We will review your enquiry and issue a priced quote shortly.
+              </div>
+            )}
             <div style={s.actionButtons}>
               {[
                 ['accepted', 'Accept Quote', '#16a34a', '#dcfce7', '#bbf7d0'],
                 ['changes_requested', 'Request Changes', '#d97706', '#fffbeb', '#fde68a'],
                 ['declined', 'Decline', '#dc2626', '#fef2f2', '#fecaca'],
-              ].map(([val, label, color, bg, border]) => (
+              ].filter(([val]) => val !== 'accepted' || quote.total_inc_vat)
+              .map(([val, label, color, bg, border]) => (
                 <button
                   key={val}
                   onClick={() => setAction(action === val ? null : val)}

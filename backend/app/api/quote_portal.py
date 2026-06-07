@@ -114,14 +114,16 @@ def get_client_quote(token: uuid.UUID, db: Db):
     # Build client-safe spec summary from snapshot
     spec_summary = None
     if quote.spec_snapshot:
-        snap = quote.spec_snapshot
+        fields = _spec_fields(quote.spec_snapshot)
         spec_summary = {
-            "width_m":      snap.get("width_m"),
-            "length_m":     snap.get("length_m"),
-            "wall_height_m": snap.get("wall_height_m"),
-            "roof_type":    snap.get("roof_type"),
-            "floor_area_m2": snap.get("floor_area_m2"),
-            "openings":     snap.get("openings"),
+            "pod_type":     fields.get("pod_type"),
+            "width_m":      fields.get("width_m"),
+            "length_m":     fields.get("length_m"),
+            "height_m":     fields.get("height_m"),
+            "wall_height_m": fields.get("wall_height_m"),
+            "floor_area_m2": fields.get("floor_area_m2"),
+            "roof_type":    fields.get("roof_type"),
+            "openings":     fields.get("openings"),
         }
 
     return ClientQuoteOut(
@@ -164,6 +166,11 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
     quote.client_response = body.action
     quote.client_response_note = body.note
 
+    # Block acceptance of unpriced quotes
+    if body.action == "accepted":
+        if not quote.total_inc_vat or float(quote.total_inc_vat) <= 0:
+            raise HTTPException(400, "This quote has not been priced yet and cannot be accepted. Please wait for a priced quote.")
+
     # Auto-transition quote status on acceptance
     if body.action == "accepted" and quote.status not in ("accepted", "converted"):
         quote.status = "accepted"
@@ -180,7 +187,8 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
         _add_event(db, quote, "client_declined_quote", quote.status,
                    f"Client declined via portal. {body.note or ''}", None)
     else:
-        # changes_requested — stay in current status, just log
+        # changes_requested — update status and log
+        quote.status = "changes_requested"
         _add_event(db, quote, "client_requested_changes", quote.status,
                    f"Client requested changes via portal. {body.note or ''}", None)
 
@@ -190,9 +198,10 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
     # Return updated view
     spec_summary = None
     if quote.spec_snapshot:
-        snap = quote.spec_snapshot
-        spec_summary = {k: snap.get(k) for k in
-                        ("width_m", "length_m", "wall_height_m", "roof_type", "floor_area_m2", "openings")}
+        fields = _spec_fields(quote.spec_snapshot)
+        spec_summary = {k: fields.get(k) for k in
+                        ("pod_type", "width_m", "length_m", "height_m", "wall_height_m",
+                         "floor_area_m2", "roof_type", "openings")}
 
     return ClientQuoteOut(
         quote_id=quote.id,
@@ -215,7 +224,17 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
     )
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _spec_fields(snap: dict | None) -> dict:
+    """Extract flat spec fields from old flat snapshot or new nested questionnaire snapshot."""
+    if not snap:
+        return {}
+    qa = snap.get("questionnaire_answers")
+    if isinstance(qa, dict):
+        return qa
+    return snap
+
 
 def _add_event(db, quote, event_type, old_status, note, created_by):
     db.add(QuoteEvent(
