@@ -604,6 +604,10 @@ class AccountSettings(Base):
     bank_iban            = Column(String(50))
     bank_bic             = Column(String(20))
     payment_terms_days   = Column(Integer, default=7)
+    # Internal notification contact — receives alerts when clients respond to quotes
+    notify_name          = Column(String(255))
+    notify_email         = Column(String(255))
+    notify_phone         = Column(String(50))
     updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 

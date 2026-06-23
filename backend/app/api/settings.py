@@ -34,6 +34,9 @@ class SettingsOut(BaseModel):
     bank_iban: str | None
     bank_bic: str | None
     payment_terms_days: int | None
+    notify_name: str | None
+    notify_email: str | None
+    notify_phone: str | None
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +57,9 @@ class SettingsIn(BaseModel):
     bank_iban: str | None = None
     bank_bic: str | None = None
     payment_terms_days: int | None = 7
+    notify_name: str | None = None
+    notify_email: str | None = None
+    notify_phone: str | None = None
 
 
 def _get_or_create(db) -> AccountSettings:
@@ -95,6 +101,9 @@ def update_settings(body: SettingsIn, db: Db):
     s.bank_iban = body.bank_iban
     s.bank_bic = body.bank_bic
     s.payment_terms_days = body.payment_terms_days
+    s.notify_name = body.notify_name
+    s.notify_email = body.notify_email
+    s.notify_phone = body.notify_phone
     db.commit()
     db.refresh(s)
     return s

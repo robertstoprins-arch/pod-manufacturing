@@ -215,6 +215,23 @@ export default function SettingsPage() {
           </Field>
         </div>
 
+        {/* ── Notification contact ── */}
+        <div className="px-6 py-5 space-y-4">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notification Contact</div>
+          <p className="text-xs text-gray-400 -mt-2">This person receives internal alerts when clients accept, decline, or request changes to a quote.</p>
+          <Field label="Responsible person">
+            <TextInput value={form.notify_name} onChange={v => set('notify_name', v)} placeholder="Robert Stoprins" />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Notification email">
+              <TextInput value={form.notify_email} onChange={v => set('notify_email', v)} placeholder="robert@top-r.com" />
+            </Field>
+            <Field label="Phone">
+              <TextInput value={form.notify_phone} onChange={v => set('notify_phone', v)} placeholder="+353 87 123 4567" />
+            </Field>
+          </div>
+        </div>
+
         {/* ── Bank details ── */}
         <div className="px-6 py-5 space-y-4">
           <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Bank Details</div>
