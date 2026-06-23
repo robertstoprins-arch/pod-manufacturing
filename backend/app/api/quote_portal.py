@@ -214,7 +214,7 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
 
     # ── Send emails after response ────────────────────────────────────────────
     settings = db.query(AccountSettings).first()
-    company_email = (settings and settings.company_email) or None
+    company_email = os.environ.get("NOTIFY_EMAIL", "").strip() or None
     company_name  = (settings and settings.company_name) or "Top-R Solutions"
     portal_url    = _portal_url(quote.client_token)
     backend       = _backend_base()
