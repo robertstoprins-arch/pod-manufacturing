@@ -19,7 +19,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Client, PodSpec, Quote, QuoteEvent
+from app.models import AccountSettings, Client, PodSpec, Quote, QuoteEvent
+from app.api.email_service import send_email
 from app.product_templates import get_template, list_active_templates
 
 router = APIRouter(prefix="/enquiry", tags=["enquiry"])
@@ -267,6 +268,40 @@ def submit_enquiry(body: EnquiryIn, db: Db):
     ))
 
     db.commit()
+
+    # ── Emails ───────────────────────────────────────────────────────────────
+    settings = db.query(AccountSettings).first()
+    company_name = (settings and settings.company_name) or "Top-R Solutions"
+
+    # Acknowledgement to client
+    send_email(
+        to=body.email,
+        subject=f"We've received your enquiry — {title}",
+        html=(
+            f"<p>Hi {body.first_name},</p>"
+            f"<p>Thanks for reaching out to {company_name}. We've received your enquiry "
+            f"for a <strong>{title}</strong> and will review it and get back to you shortly.</p>"
+            f"<p>Your reference number is <strong>{ref}</strong>. Please quote this in any correspondence with us.</p>"
+            f"<p>Best regards,<br>{company_name}</p>"
+        ),
+    )
+
+    # Internal new-lead alert
+    if settings and settings.notify_email:
+        phone_line = f"<br>Phone: {body.phone}" if body.phone else ""
+        company_line = f"<br>Company: {body.company_name}" if body.company_name else ""
+        send_email(
+            to=settings.notify_email,
+            subject=f"[NEW ENQUIRY] {body.first_name} {body.last_name} — {title}",
+            html=(
+                f"<p>A new enquiry has been submitted via the website.</p>"
+                f"<p><strong>Client:</strong> {body.first_name} {body.last_name}"
+                f"<br>Email: {body.email}{phone_line}{company_line}</p>"
+                f"<p><strong>Product:</strong> {title}<br>"
+                f"<strong>Reference:</strong> {ref}</p>"
+            ),
+        )
+    # ─────────────────────────────────────────────────────────────────────────
 
     return EnquiryOut(
         reference = ref,
