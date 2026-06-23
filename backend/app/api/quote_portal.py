@@ -8,6 +8,7 @@ GET  /quotes/view/{token}/quote.pdf           public — client downloads quote 
 GET  /quotes/view/{token}/deposit-invoice.pdf public — client downloads deposit invoice PDF (accepted only)
 """
 import io
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Annotated
@@ -19,6 +20,18 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import AccountSettings, Quote, QuoteEvent
+from app.api.email_service import send_email
+
+FRONTEND_URL_DEFAULT = "https://pod-manufacturing.vercel.app"
+
+
+def _portal_url(token: uuid.UUID) -> str:
+    base = os.environ.get("FRONTEND_URL", FRONTEND_URL_DEFAULT).rstrip("/")
+    return f"{base}/client-quote/{token}"
+
+
+def _backend_base() -> str:
+    return os.environ.get("BACKEND_URL", "").rstrip("/")
 
 router_internal = APIRouter(prefix="/quotes", tags=["quote-portal"])
 router_public   = APIRouter(prefix="/quotes", tags=["quote-portal"])
@@ -198,6 +211,118 @@ def client_respond(token: uuid.UUID, body: ClientRespondIn, db: Db):  # noqa: C9
 
     db.commit()
     db.refresh(quote)
+
+    # ── Send emails after response ────────────────────────────────────────────
+    settings = db.query(AccountSettings).first()
+    company_email = (settings and settings.company_email) or None
+    company_name  = (settings and settings.company_name) or "Top-R Solutions"
+    portal_url    = _portal_url(quote.client_token)
+    backend       = _backend_base()
+    invoice_url   = f"{backend}/quotes/view/{quote.client_token}/deposit-invoice.pdf" if backend else None
+    ref           = quote.quote_number or str(quote.id)[:8]
+
+    if body.action == "accepted":
+        # Confirmation to client
+        if quote.client_email:
+            invoice_line = (
+                f"<p>You can download your deposit invoice here: "
+                f"<a href='{invoice_url}'>Download deposit invoice</a></p>"
+                if invoice_url else ""
+            )
+            send_email(
+                to=quote.client_email,
+                subject=f"Quote Accepted — {quote.title}",
+                html_body=(
+                    f"<p>Dear {quote.client_name or 'there'},</p>"
+                    f"<p>Thank you for accepting quote <strong>{ref}</strong>. "
+                    f"We're excited to move forward with your project.</p>"
+                    f"{invoice_line}"
+                    f"<p>We'll be in touch shortly with next steps. "
+                    f"If you have any questions, please reply to this email.</p>"
+                    f"<p>Best regards,<br>{company_name}</p>"
+                ),
+                text_body=(
+                    f"Dear {quote.client_name or 'there'},\n\n"
+                    f"Thank you for accepting quote {ref}. "
+                    f"We're excited to move forward with your project.\n\n"
+                    f"We'll be in touch shortly with next steps.\n\n"
+                    f"Best regards,\n{company_name}"
+                ),
+                from_name=company_name,
+            )
+        # Internal notification
+        if company_email:
+            total = f"€{float(quote.total_inc_vat):,.0f}" if quote.total_inc_vat else "unpriced"
+            send_email(
+                to=company_email,
+                subject=f"[ACTION] Client accepted quote {ref}",
+                html_body=(
+                    f"<p><strong>{quote.client_name or 'Client'}</strong> has accepted quote "
+                    f"<strong>{ref}</strong> ({quote.title}).</p>"
+                    f"<p>Total inc. VAT: <strong>{total}</strong></p>"
+                    f"<p>Accepted at: {now.strftime('%Y-%m-%d %H:%M UTC')}</p>"
+                    f"<p><a href='{portal_url}'>View client portal</a></p>"
+                    + (f"<p>Note: {body.note}</p>" if body.note else "")
+                ),
+                text_body=(
+                    f"{quote.client_name or 'Client'} accepted quote {ref} ({quote.title}).\n"
+                    f"Total: {total}\nAccepted: {now.strftime('%Y-%m-%d %H:%M UTC')}\n"
+                    + (f"Note: {body.note}\n" if body.note else "")
+                ),
+                from_name=company_name,
+            )
+
+    elif body.action == "declined":
+        if company_email:
+            send_email(
+                to=company_email,
+                subject=f"[INFO] Client declined quote {ref}",
+                html_body=(
+                    f"<p><strong>{quote.client_name or 'Client'}</strong> has declined quote "
+                    f"<strong>{ref}</strong> ({quote.title}).</p>"
+                    + (f"<p>Reason: {body.note}</p>" if body.note else "")
+                ),
+                text_body=(
+                    f"{quote.client_name or 'Client'} declined quote {ref}.\n"
+                    + (f"Reason: {body.note}\n" if body.note else "")
+                ),
+                from_name=company_name,
+            )
+
+    elif body.action == "changes_requested":
+        if company_email:
+            send_email(
+                to=company_email,
+                subject=f"[ACTION] Client requested changes on quote {ref}",
+                html_body=(
+                    f"<p><strong>{quote.client_name or 'Client'}</strong> has requested changes on quote "
+                    f"<strong>{ref}</strong> ({quote.title}).</p>"
+                    + (f"<p>Message: {body.note}</p>" if body.note else "")
+                    + f"<p><a href='{portal_url}'>View client portal</a></p>"
+                ),
+                text_body=(
+                    f"{quote.client_name or 'Client'} requested changes on quote {ref}.\n"
+                    + (f"Message: {body.note}\n" if body.note else "")
+                ),
+                from_name=company_name,
+            )
+        if quote.client_email:
+            send_email(
+                to=quote.client_email,
+                subject=f"We've received your feedback — {quote.title}",
+                html_body=(
+                    f"<p>Dear {quote.client_name or 'there'},</p>"
+                    f"<p>We've received your change request on quote <strong>{ref}</strong> "
+                    f"and will be in touch shortly with a revised quote.</p>"
+                    f"<p>Best regards,<br>{company_name}</p>"
+                ),
+                text_body=(
+                    f"Dear {quote.client_name or 'there'},\n\n"
+                    f"We've received your change request on quote {ref} "
+                    f"and will be in touch shortly.\n\nBest regards,\n{company_name}"
+                ),
+                from_name=company_name,
+            )
 
     # Return updated view
     spec_summary = None
